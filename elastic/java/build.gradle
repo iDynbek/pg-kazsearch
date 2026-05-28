@@ -33,17 +33,24 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.register("bundlePlugin", Zip) {
     archiveBaseName = "analysis-kazsearch"
-    archiveVersion = version
+    archiveVersion = provider { project.version }
     from(jar)
     from("src/main/plugin-metadata") {
         include "plugin-descriptor.properties"
         include "plugin-security.policy"
         include "entitlement-policy.yaml"
         // Stamp the version from -Pversion=X.Y.Z into plugin-descriptor.properties
-        filter { line -> line.replace("version=0.1.0", "version=${project.version}") }
+        filter { line ->
+            line.replaceAll("version=0\\.1\\.0", "version=" + project.version)
+        }
     }
     // Native libs go into the JAR via processResources (src/main/resources/native/)
     // so KazakhStemmerNative can extract the right one at runtime.
 }
 
 bundlePlugin.dependsOn(jar)
+
+// Also stamp the version into the jar's archive name
+jar {
+    archiveVersion = provider { project.version }
+}
