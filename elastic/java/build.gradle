@@ -44,8 +44,11 @@ tasks.register("bundlePlugin", Zip) {
             line.replaceAll("version=0\\.1\\.0", "version=" + project.version)
         }
     }
-    // Native libs go into the JAR via processResources (src/main/resources/native/)
-    // so KazakhStemmerNative can extract the right one at runtime.
+    from("src/main/resources/native") {
+        include "**/*.so"
+        include "**/*.dylib"
+        includeEmptyDirs = false
+    }
 }
 
 bundlePlugin.dependsOn(jar)
