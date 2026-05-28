@@ -38,6 +38,16 @@ tasks.register("bundlePlugin", Zip) {
     from("src/main/plugin-metadata") {
         include "plugin-descriptor.properties"
         include "plugin-security.policy"
+        include "entitlement-policy.yaml"
+    }
+    from("src/main/resources/native") {
+        include "**/*.so"
+        include "**/*.dylib"
+        eachFile { fcd ->
+            // flatten: linux-aarch64/libX.so → libX.so
+            fcd.relativePath = new RelativePath(true, fcd.name)
+        }
+        includeEmptyDirs = false
     }
 }
 
