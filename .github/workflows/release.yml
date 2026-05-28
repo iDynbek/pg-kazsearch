@@ -105,17 +105,27 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
+    # Build inside Ubuntu 20.04 container to match ES 8.17's glibc (2.31)
+    container:
+      image: ubuntu:20.04
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install build deps
+        run: |
+          apt-get update
+          apt-get install -y curl gcc make pkg-config
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Build native lib
         run: |
+          . "$HOME/.cargo/env"
           cargo build --release -p kazsearch-elastic
           mkdir -p elastic/java/src/main/resources/native/linux-${{ matrix.arch }}
           cp target/release/libkazsearch_elastic.so elastic/java/src/main/resources/native/linux-${{ matrix.arch }}/
+          # Verify glibc requirement
+          objdump -T target/release/libkazsearch_elastic.so | grep GLIBC | sed 's/.*GLIBC_/GLIBC_/' | sort -Vu || true
 
       - uses: actions/upload-artifact@v4
         with:
