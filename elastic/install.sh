@@ -3,8 +3,14 @@
 #  kazsearch Elasticsearch plugin installer
 #
 #  Usage:
-#    # Install from pre-built zip (downloaded from GitHub Releases):
-#    ./install.sh /path/to/analysis-kazsearch-0.1.0.zip
+#    # Auto-download latest release and install:
+#    ./install.sh
+#
+#    # Download + install a specific version:
+#    ./install.sh --version 2.1.0
+#
+#    # Install from a local pre-built zip:
+#    ./install.sh /path/to/analysis-kazsearch-2.1.0.zip
 #
 #    # Build from source and install:
 #    ./install.sh --build
@@ -13,16 +19,15 @@
 #    ./install.sh --docker
 #
 #  Requirements:
-#    --build  : Rust toolchain, Java 21, Gradle
-#    --docker : Docker
-#    (default): just elasticsearch-plugin on PATH or ES_HOME set
+#    (default) : curl + elasticsearch-plugin on PATH (or ES_HOME set)
+#    --build   : Rust toolchain, Java 21, Gradle
+#    --docker  : Docker
 # ──────────────────────────────────────────────────────────────
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLUGIN_NAME="analysis-kazsearch"
-PLUGIN_VERSION="0.1.0"
-ZIP_NAME="${PLUGIN_NAME}-${PLUGIN_VERSION}.zip"
+GITHUB_REPO="darkhanakh/pg-kazsearch"
 JAVA_DIR="${REPO_ROOT}/elastic/java"
 DIST_DIR="${JAVA_DIR}/build/distributions"
 
@@ -33,6 +38,50 @@ info()  { printf '\033[0;36m→ %s\033[0m\n' "$*"; }
 usage() {
     sed -n '2,/^# ─/{ /^# ─/d; s/^#  \?//; p }' "$0"
     exit 1
+}
+
+# ── Detect latest release version from GitHub ────────────────
+detect_latest_version() {
+    local url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+    local tag
+    if command -v curl &>/dev/null; then
+        tag=$(curl -sf "$url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\?\([^"]*\)".*/\1/')
+    elif command -v wget &>/dev/null; then
+        tag=$(wget -qO- "$url" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\?\([^"]*\)".*/\1/')
+    else
+        red "ERROR: curl or wget required to download releases."
+        exit 1
+    fi
+    if [[ -z "$tag" ]]; then
+        red "ERROR: Could not detect latest release version."
+        red "Check: https://github.com/${GITHUB_REPO}/releases"
+        exit 1
+    fi
+    echo "$tag"
+}
+
+# ── Download plugin zip from GitHub Releases ─────────────────
+download_plugin() {
+    local version="$1"
+    local zip_name="${PLUGIN_NAME}-${version}.zip"
+    local url="https://github.com/${GITHUB_REPO}/releases/download/v${version}/${zip_name}"
+    local dest="/tmp/${zip_name}"
+
+    info "Downloading ${zip_name} from GitHub Releases..."
+    if command -v curl &>/dev/null; then
+        curl -fSL -o "$dest" "$url"
+    else
+        wget -q -O "$dest" "$url"
+    fi
+
+    if [[ ! -f "$dest" ]]; then
+        red "ERROR: Download failed."
+        red "URL: ${url}"
+        exit 1
+    fi
+
+    green "Downloaded: ${dest}"
+    echo "$dest"
 }
 
 # ── Build native library (Rust → .so / .dylib) ──────────────
@@ -56,11 +105,14 @@ build_plugin() {
         exit 1
     fi
 
-    if [[ ! -f "${DIST_DIR}/${ZIP_NAME}" ]]; then
-        red "ERROR: Expected zip not found: ${DIST_DIR}/${ZIP_NAME}"
+    local zip_file
+    zip_file=$(ls "${DIST_DIR}/${PLUGIN_NAME}"-*.zip 2>/dev/null | head -1)
+    if [[ -z "$zip_file" ]]; then
+        red "ERROR: Plugin zip not found in ${DIST_DIR}/"
         exit 1
     fi
-    green "Plugin zip built: ${DIST_DIR}/${ZIP_NAME}"
+    green "Plugin zip built: ${zip_file}"
+    echo "$zip_file"
 }
 
 # ── Install into a running Elasticsearch ─────────────────────
@@ -91,69 +143,105 @@ install_plugin() {
     fi
 
     info "Installing plugin from ${zip_path}..."
-    $es_plugin install --batch "file://${zip_path}"
+    $es_plugin install --batch "file://$(realpath "$zip_path")"
 
     green "✅ Plugin installed! Restart Elasticsearch to activate."
-    echo ""
-    echo "  Add to your elasticsearch.yml if not already set:"
-    echo "    # No extra config needed — the plugin registers automatically."
-    echo ""
-    echo "  Create an index with the stemmer:"
-    echo '    PUT /my_index'
-    echo '    {'
-    echo '      "settings": {'
-    echo '        "analysis": {'
-    echo '          "filter":   { "kaz_stem": { "type": "kazsearch_stem" } },'
-    echo '          "analyzer": {'
-    echo '            "kazakh": {'
-    echo '              "type": "custom",'
-    echo '              "tokenizer": "standard",'
-    echo '              "filter": ["lowercase", "kaz_stem"]'
-    echo '            }'
-    echo '          }'
-    echo '        }'
-    echo '      },'
-    echo '      "mappings": {'
-    echo '        "properties": {'
-    echo '          "title": { "type": "text", "analyzer": "kazakh" },'
-    echo '          "body":  { "type": "text", "analyzer": "kazakh" }'
-    echo '        }'
-    echo '      }'
-    echo '    }'
+    cat <<'USAGE'
+
+  Create an index with the Kazakh stemmer:
+
+    PUT /my_index
+    {
+      "settings": {
+        "analysis": {
+          "filter":   { "kaz_stem": { "type": "kazsearch_stem" } },
+          "analyzer": {
+            "kazakh": {
+              "type": "custom",
+              "tokenizer": "standard",
+              "filter": ["lowercase", "kaz_stem"]
+            }
+          }
+        }
+      },
+      "mappings": {
+        "properties": {
+          "title": { "type": "text", "analyzer": "kazakh" },
+          "body":  { "type": "text", "analyzer": "kazakh" }
+        }
+      }
+    }
+USAGE
 }
 
 # ── Docker mode ──────────────────────────────────────────────
 docker_mode() {
-    build_native
-    build_plugin
+    local version="${1:-}"
+
+    if [[ -z "$version" ]]; then
+        # Build from source
+        build_native
+        local zip_file
+        zip_file=$(build_plugin)
+        version=$(basename "$zip_file" | sed "s/${PLUGIN_NAME}-//; s/\.zip//")
+    else
+        # Download release
+        local zip_path
+        zip_path=$(download_plugin "$version")
+        mkdir -p "${DIST_DIR}"
+        cp "$zip_path" "${DIST_DIR}/"
+    fi
+
     info "Building Docker image..."
     cd "${REPO_ROOT}/elastic/docker"
-    docker build -t kazsearch-elastic:${PLUGIN_VERSION} -f Dockerfile "${JAVA_DIR}"
-    green "✅ Docker image built: kazsearch-elastic:${PLUGIN_VERSION}"
+    docker build -t kazsearch-elastic:"${version}" \
+        --build-arg PLUGIN_VERSION="${version}" \
+        -f Dockerfile "${JAVA_DIR}"
+
+    green "✅ Docker image built: kazsearch-elastic:${version}"
     echo ""
     echo "  Run it:"
     echo "    docker run -d --name es-kazsearch \\"
     echo "      -p 9200:9200 \\"
     echo "      -e discovery.type=single-node \\"
     echo "      -e xpack.security.enabled=false \\"
-    echo "      kazsearch-elastic:${PLUGIN_VERSION}"
+    echo "      kazsearch-elastic:${version}"
 }
 
 # ── Main ─────────────────────────────────────────────────────
+VERSION=""
+
 case "${1:-}" in
     --build)
         build_native
-        build_plugin
-        install_plugin "$(cd "$DIST_DIR" && pwd)/${ZIP_NAME}"
+        zip_file=$(build_plugin)
+        install_plugin "$zip_file"
         ;;
     --docker)
-        docker_mode
-        ;;
-    --help|-h|"")
-        if [[ -z "${1:-}" ]]; then
-            usage
+        shift
+        if [[ "${1:-}" == "--version" ]]; then
+            VERSION="$2"
         fi
+        docker_mode "$VERSION"
+        ;;
+    --version)
+        VERSION="${2:-}"
+        if [[ -z "$VERSION" ]]; then
+            red "ERROR: --version requires a value (e.g., --version 2.1.0)"
+            exit 1
+        fi
+        zip_path=$(download_plugin "$VERSION")
+        install_plugin "$zip_path"
+        ;;
+    --help|-h)
         usage
+        ;;
+    "")
+        # Default: download latest and install
+        VERSION=$(detect_latest_version)
+        info "Latest release: v${VERSION}"
+        zip_path=$(download_plugin "$VERSION")
+        install_plugin "$zip_path"
         ;;
     *)
         # Treat argument as path to pre-built zip

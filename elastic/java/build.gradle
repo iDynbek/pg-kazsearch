@@ -39,6 +39,8 @@ tasks.register("bundlePlugin", Zip) {
         include "plugin-descriptor.properties"
         include "plugin-security.policy"
         include "entitlement-policy.yaml"
+        // Stamp the version from -Pversion=X.Y.Z into plugin-descriptor.properties
+        filter { line -> line.replace("version=0.1.0", "version=${project.version}") }
     }
     from("src/main/resources/native") {
         include "**/*.so"

@@ -9,62 +9,65 @@ BFS suffix-stripping with vowel harmony enforcement — the first Kazakh stemmer
 |---|---|---|---|
 | 0.1.0 | 8.17.x | 21+ | linux/aarch64, linux/x86_64, darwin/aarch64 |
 
-## Quick Start (Docker)
+## Quick Start
 
-The fastest way — one command, no build tools needed:
+The install script auto-downloads the latest release from GitHub:
 
 ```bash
-# From the repo root:
+# Download latest release + install into local ES:
+./elastic/install.sh
+
+# Or a specific version:
+./elastic/install.sh --version 2.1.0
+
+# Or Docker (no ES install needed):
+./elastic/install.sh --docker
+```
+
+The release zip is self-contained — Java jar + native Rust library for both x86_64 and aarch64.
+
+## Install Methods
+
+### Method 1: Auto-download (recommended)
+
+```bash
+# Downloads latest from GitHub Releases, installs into ES_HOME
+./elastic/install.sh
+sudo systemctl restart elasticsearch
+```
+
+### Method 2: Manual download
+
+Grab `analysis-kazsearch-<version>.zip` from [GitHub Releases](https://github.com/darkhanakh/pg-kazsearch/releases), then:
+
+```bash
+bin/elasticsearch-plugin install file:///path/to/analysis-kazsearch-2.1.0.zip
+sudo systemctl restart elasticsearch
+```
+
+### Method 3: Docker
+
+```bash
+# From release:
+./elastic/install.sh --docker --version 2.1.0
+
+# Or from source:
 ./elastic/install.sh --docker
 
-# Or manually:
+# Then run:
 docker run -d --name es-kazsearch \
   -p 9200:9200 \
   -e discovery.type=single-node \
   -e xpack.security.enabled=false \
-  kazsearch-elastic:0.1.0
+  kazsearch-elastic:2.1.0
 ```
 
-## Install from Pre-Built Zip
-
-Download `analysis-kazsearch-0.1.0.zip` from [GitHub Releases](https://github.com/darkhanakh/pg-kazsearch/releases), then:
-
-```bash
-# Option A: use the install script
-./elastic/install.sh /path/to/analysis-kazsearch-0.1.0.zip
-
-# Option B: install manually
-bin/elasticsearch-plugin install file:///path/to/analysis-kazsearch-0.1.0.zip
-sudo systemctl restart elasticsearch
-```
-
-The zip is self-contained — it includes the Java jar and the native Rust library.
-
-## Build from Source
+### Method 4: Build from source
 
 Requirements: Rust toolchain, Java 21, Gradle.
 
 ```bash
-# Build native lib + Java plugin + install into local ES
 ./elastic/install.sh --build
-```
-
-Or step by step:
-
-```bash
-# 1. Build the native Rust library
-./scripts/build_elastic_native.sh
-
-# 2. Build the plugin zip (includes native lib)
-cd elastic/java
-gradle bundlePlugin
-# → build/distributions/analysis-kazsearch-0.1.0.zip
-
-# 3. Install
-$ES_HOME/bin/elasticsearch-plugin install \
-  file://$(pwd)/build/distributions/analysis-kazsearch-0.1.0.zip
-
-# 4. Restart Elasticsearch
 sudo systemctl restart elasticsearch
 ```
 

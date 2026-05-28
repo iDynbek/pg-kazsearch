@@ -3,6 +3,8 @@ services:
     build:
       context: ../java
       dockerfile: ../docker/Dockerfile
+      args:
+        PLUGIN_VERSION: "${PLUGIN_VERSION:-0.1.0}"
     container_name: es-kazsearch
     restart: unless-stopped
     environment:
