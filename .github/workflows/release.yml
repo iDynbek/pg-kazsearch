@@ -105,27 +105,24 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
-    # Build inside Ubuntu 20.04 container to match ES 8.17's glibc (2.31)
-    container:
-      image: ubuntu:20.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build deps
-        run: |
-          apt-get update
-          apt-get install -y curl gcc make pkg-config
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Build native lib
+      - name: Install cargo-zigbuild
+        run: pip3 install ziglang cargo-zigbuild
+
+      - name: Build native lib (targeting glibc 2.17 for ES compat)
         run: |
-          . "$HOME/.cargo/env"
-          cargo build --release -p kazsearch-elastic
+          cargo zigbuild --release -p kazsearch-elastic --target ${{ matrix.rust_target }}.2.17
           mkdir -p elastic/java/src/main/resources/native/linux-${{ matrix.arch }}
-          cp target/release/libkazsearch_elastic.so elastic/java/src/main/resources/native/linux-${{ matrix.arch }}/
-          # Verify glibc requirement
-          objdump -T target/release/libkazsearch_elastic.so | grep GLIBC | sed 's/.*GLIBC_/GLIBC_/' | sort -Vu || true
+          cp target/${{ matrix.rust_target }}/release/libkazsearch_elastic.so elastic/java/src/main/resources/native/linux-${{ matrix.arch }}/
+          # Verify glibc version requirement is low enough
+          objdump -T target/${{ matrix.rust_target }}/release/libkazsearch_elastic.so | grep GLIBC | sed 's/.*GLIBC_/GLIBC_/' | sort -Vu || true
 
       - uses: actions/upload-artifact@v4
         with:
