@@ -1,2 +1,5 @@
 ALL-UNNAMED:
   - load_native_libraries
+  - files:
+      - path: "${java.io.tmpdir}"
+        mode: read_write
