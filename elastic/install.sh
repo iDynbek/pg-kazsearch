@@ -36,7 +36,22 @@ green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 info()  { printf '\033[0;36m→ %s\033[0m\n' "$*"; }
 
 usage() {
-    sed -n '2,/^# ─/{ /^# ─/d; s/^#  \?//; p }' "$0"
+    cat <<'EOF'
+kazsearch Elasticsearch plugin installer
+
+Usage:
+  ./install.sh                              Download latest release + install
+  ./install.sh --version 2.1.0              Download specific version + install
+  ./install.sh /path/to/plugin.zip          Install from local zip
+  ./install.sh --build                      Build from source + install
+  ./install.sh --docker                     Build Docker image from source
+  ./install.sh --docker --version 2.1.0     Build Docker image from release
+
+Requirements:
+  (default)  curl + elasticsearch-plugin on PATH (or ES_HOME set)
+  --build    Rust toolchain, Java 21, Gradle
+  --docker   Docker
+EOF
     exit 1
 }
 
