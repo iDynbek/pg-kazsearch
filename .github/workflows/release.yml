@@ -148,19 +148,20 @@ jobs:
       - name: Build plugin ZIP
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          docker run --rm -v "$(pwd)/elastic/java:/project" -w /project gradle:8.11-jdk21 \
+          docker run --rm \
+            -v "$(pwd)/elastic/java:/project" \
+            -w /project \
+            --user "$(id -u):$(id -g)" \
+            gradle:8.11-jdk21 \
             gradle bundlePlugin -Pversion=${VERSION}
-
-      - name: Rename ZIP to include version
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          echo "=== Built artifacts ==="
+          ls -la elastic/java/build/distributions/
+          # Ensure consistent naming for the release
           cd elastic/java/build/distributions
-          # Gradle may produce analysis-kazsearch-${VERSION}.zip already
-          ls -la
-          # Ensure consistent naming
           if [ ! -f "analysis-kazsearch-${VERSION}.zip" ]; then
             mv analysis-kazsearch-*.zip "analysis-kazsearch-${VERSION}.zip"
           fi
+          ls -la
 
       - uses: actions/upload-artifact@v4
         with:
