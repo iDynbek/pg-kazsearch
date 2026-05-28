@@ -145,19 +145,22 @@ jobs:
           done
           find . -name '*.so' -ls
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
       - name: Build plugin ZIP
+        working-directory: elastic/java
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          docker run --rm \
-            -v "$(pwd)/elastic/java:/project" \
-            -w /project \
-            --user "$(id -u):$(id -g)" \
-            gradle:8.11-jdk21 \
-            gradle bundlePlugin -Pversion=${VERSION}
+          gradle bundlePlugin -Pversion=${VERSION}
           echo "=== Built artifacts ==="
-          ls -la elastic/java/build/distributions/
+          ls -la build/distributions/
           # Ensure consistent naming for the release
-          cd elastic/java/build/distributions
+          cd build/distributions
           if [ ! -f "analysis-kazsearch-${VERSION}.zip" ]; then
             mv analysis-kazsearch-*.zip "analysis-kazsearch-${VERSION}.zip"
           fi
