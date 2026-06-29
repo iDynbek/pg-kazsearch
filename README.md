@@ -1,9 +1,23 @@
-# pg_kazsearch
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/logo-light.png">
+    <img src="docs/img/logo-light.png" alt="pg_kazsearch logo" width="160">
+  </picture>
+</p>
 
-[License: LGPL v3](LICENSE)
-[PostgreSQL: 16–18](https://www.postgresql.org/)
+<h1 align="center">pg_kazsearch</h1>
 
-The first full-text search stemmer for the Kazakh language — for **PostgreSQL** and **Elasticsearch**.
+<p align="center">
+  The first full-text search stemmer for the Kazakh language — for <strong>PostgreSQL</strong> and <strong>Elasticsearch</strong>.
+</p>
+
+<p align="center">
+  <a href="LICENSE">License: LGPL v3</a> &nbsp;·&nbsp;
+  <a href="https://www.postgresql.org/">PostgreSQL: 16–18</a>
+</p>
+
+---
 
 Kazakh is heavily agglutinative: a single word like `мектептерімізде` carries plural, possessive, and locative suffixes that must all be stripped to reach the root `мектеп`. No existing PostgreSQL or Elasticsearch analyzer handles this. pg_kazsearch fills that gap with a Rust stemmer that plugs into both PostgreSQL (via [pgrx](https://github.com/pgcentralfoundation/pgrx)) and Elasticsearch (via JNI native plugin).
 
