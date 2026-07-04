@@ -1,28 +1,58 @@
 package io.github.darkhanakh.kazsearch;
 
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-
-@SuppressWarnings("removal")
+/**
+ * Thin JNI bridge to the Rust kazsearch stemmer.
+ *
+ * The native stemmer keeps one process-global configuration (lexicon +
+ * script mode), so {@link #configure} applies "first explicit config wins"
+ * semantics: the bundled default never overrides an explicit per-index
+ * setting, and re-applying an identical config is a no-op.
+ */
 public final class KazakhStemmerNative {
-    private static final String LIBRARY_BASENAME = "kazsearch_elastic";
+
+    /** Native status codes (mirrors elastic/src/lib.rs). */
+    public static final int OK = 0;
+    public static final int ERR_LEXICON = -3;
+    public static final int ERR_CONFIG = -6;
+
+    private static final Object CONFIG_LOCK = new Object();
+    private static String appliedConfigKey;
 
     static {
-        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-            System.loadLibrary(LIBRARY_BASENAME);
-            return null;
-        });
-        int initCode = init0("");
-        if (initCode != 0) {
-            throw new IllegalStateException("Failed to initialize native kazsearch stemmer: " + initCode);
-        }
+        NativeLibraryLoader.load();
     }
 
     private KazakhStemmerNative() {
     }
 
-    public static int init(String lexiconPath) {
-        return init0(lexiconPath == null ? "" : lexiconPath);
+    /**
+     * Applies the lexicon path and script mode to the native stemmer config.
+     *
+     * @param lexiconPath absolute path to a lexicon dict, or empty for none
+     * @param scriptMode  "auto" or "cyrillic_only"
+     * @param explicit    true when the values come from user-provided index
+     *                    settings; explicit configs may replace previous ones,
+     *                    the bundled default only applies when nothing has
+     *                    been configured yet
+     * @return native status code ({@link #OK} on success)
+     */
+    static int configure(String lexiconPath, String scriptMode, boolean explicit) {
+        String lex = lexiconPath == null ? "" : lexiconPath;
+        String mode = scriptMode == null || scriptMode.isEmpty() ? "auto" : scriptMode;
+        synchronized (CONFIG_LOCK) {
+            String key = lex + "\u0000" + mode;
+            if (key.equals(appliedConfigKey)) {
+                return OK;
+            }
+            if (!explicit && appliedConfigKey != null) {
+                return OK;
+            }
+            int code = init0(lex, mode);
+            if (code == OK) {
+                appliedConfigKey = key;
+            }
+            return code;
+        }
     }
 
     public static String stem(String token) {
@@ -33,7 +63,7 @@ public final class KazakhStemmerNative {
         return stemmed == null ? token : stemmed;
     }
 
-    private static native int init0(String lexiconPath);
+    private static native int init0(String lexiconPath, String scriptMode);
 
     private static native String stem0(String token);
 }

@@ -6,7 +6,9 @@ ext.esVersion = "8.17.0"
 ext.luceneVersion = "9.12.0"
 
 group = "io.github.darkhanakh"
-version = "0.1.0"
+// Must match [workspace.package].version in the root Cargo.toml (single
+// source of truth for the release version).
+version = "2.2.0"
 
 java {
     toolchain {
@@ -27,8 +29,47 @@ dependencies {
     testImplementation "junit:junit:4.13.2"
 }
 
+def nativeResourcesDir = file("src/main/resources/native")
+def lexiconFile = file("../../data/tsearch_data/kaz_stems.dict")
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = "UTF-8"
+}
+
+// Native libraries are shipped as platform directories in the plugin zip and
+// loaded by absolute path (NativeLibraryLoader); keep them out of the jar.
+processResources {
+    exclude "native/**"
+}
+
+// Unit tests load the native library straight from the resources tree.
+tasks.withType(Test).configureEach {
+    systemProperty "kazsearch.native.dir", nativeResourcesDir.absolutePath
+}
+
+// Preflight: never ship a plugin zip without a native library or the lexicon.
+tasks.register("checkBundleContents") {
+    description = "Fails if no native library / lexicon is available for bundling"
+    def nativeDir = nativeResourcesDir
+    def lexicon = lexiconFile
+    doLast {
+        def libs = fileTree(nativeDir) {
+            include "**/*.so"
+            include "**/*.dylib"
+        }.files
+        if (libs.isEmpty()) {
+            throw new GradleException(
+                "No native library (.so/.dylib) found under ${nativeDir}.\n" +
+                "Run 'just es-native' (or scripts/build_elastic_native.sh) first — " +
+                "a plugin zip without the native library cannot load.")
+        }
+        if (!lexicon.isFile()) {
+            throw new GradleException(
+                "Lexicon not found: ${lexicon}.\n" +
+                "Run 'python3 scripts/build_lexicon.py' first so data/kaz_stems.dict " +
+                "can be bundled into the plugin zip.")
+        }
+    }
 }
 
 tasks.register("bundlePlugin", Zip) {
@@ -39,9 +80,10 @@ tasks.register("bundlePlugin", Zip) {
         include "plugin-descriptor.properties"
         include "plugin-security.policy"
         include "entitlement-policy.yaml"
-        // Stamp the version from -Pversion=X.Y.Z into plugin-descriptor.properties
+        // Stamp the build version into plugin-descriptor.properties
+        // (anchored so java.version / elasticsearch.version are untouched).
         filter { line ->
-            line.replaceAll("version=0\\.1\\.0", "version=" + project.version)
+            line.replaceAll("^version=.*", "version=" + project.version)
         }
     }
     from("src/main/resources/native") {
@@ -49,9 +91,13 @@ tasks.register("bundlePlugin", Zip) {
         include "**/*.dylib"
         includeEmptyDirs = false
     }
+    from(lexiconFile) {
+        into "data"
+    }
 }
 
 bundlePlugin.dependsOn(jar)
+bundlePlugin.dependsOn(checkBundleContents)
 
 // Also stamp the version into the jar's archive name
 jar {

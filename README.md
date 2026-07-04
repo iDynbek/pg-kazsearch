@@ -53,8 +53,8 @@ Download the `.deb` for your PostgreSQL version from [GitHub Releases](https://g
 
 ```bash
 # Example: PostgreSQL 18 on amd64
-curl -LO https://github.com/darkhanakh/pg-kazsearch/releases/latest/download/postgresql-18-pg-kazsearch_2.0.0_amd64.deb
-sudo dpkg -i postgresql-18-pg-kazsearch_2.0.0_amd64.deb
+curl -LO https://github.com/darkhanakh/pg-kazsearch/releases/latest/download/postgresql-18-pg-kazsearch_2.2.0_amd64.deb
+sudo dpkg -i postgresql-18-pg-kazsearch_2.2.0_amd64.deb
 ```
 
 Then in psql:
@@ -112,7 +112,7 @@ The same Kazakh stemmer is available as an Elasticsearch analysis plugin (`kazse
 Download the plugin ZIP from [GitHub Releases](https://github.com/darkhanakh/pg-kazsearch/releases) and install:
 
 ```bash
-bin/elasticsearch-plugin install https://github.com/darkhanakh/pg-kazsearch/releases/latest/download/analysis-kazsearch-0.1.0.zip
+bin/elasticsearch-plugin install https://github.com/darkhanakh/pg-kazsearch/releases/latest/download/analysis-kazsearch-2.2.0.zip
 ```
 
 The pre-built ZIP includes native libraries for linux/amd64 and linux/aarch64.
@@ -138,6 +138,13 @@ The pre-built ZIP includes native libraries for linux/amd64 and linux/aarch64.
 }
 ```
 
+Optional filter settings:
+
+- `lexicon_path` — absolute path to a lexicon dict file, overriding the `data/kaz_stems.dict` bundled with the plugin (loaded automatically)
+- `script_mode` — `auto` (default; Latin-script Kazakh is transliterated and stemmed) or `cyrillic_only`
+
+The plugin locates and loads its native library (`.so`/`.dylib`) from the installed plugin directory at runtime — no `LD_LIBRARY_PATH` or post-install copy step is needed.
+
 ### Verify
 
 ```bash
@@ -157,7 +164,7 @@ just es-native
 
 # Build ES plugin ZIP (includes Java bridge + native lib)
 just es-build
-# → elastic/java/build/distributions/analysis-kazsearch-0.1.0.zip
+# → elastic/java/build/distributions/analysis-kazsearch-2.2.0.zip
 
 # Run tests
 just es-up
@@ -214,7 +221,7 @@ ALTER TEXT SEARCH DICTIONARY pg_kazsearch_dict (w_deriv = 3.5, w_short_char = 10
 ALTER TEXT SEARCH DICTIONARY pg_kazsearch_dict (script_mode = cyrillic_only);
 ```
 
-CLI uses the same core default (`auto`) and exposes `--cyrillic-only` on `stem`, `analyze`, and `bench` commands. Elasticsearch currently inherits the core default (`auto`) through the native stemmer config.
+CLI uses the same core default (`auto`) and exposes `--cyrillic-only` on `stem`, `analyze`, and `bench` commands. Elasticsearch exposes the same knob as the `script_mode` token filter setting (see the Elasticsearch configuration section above).
 
 ---
 
@@ -264,13 +271,15 @@ Measured over 45,708 corpus tokens with `python3 eval/measure_stem_coverage.py`:
 
 ### Elasticsearch: kazsearch_stem vs standard analyzer
 
-On human-written gold queries, the stemmer finds more relevant articles and ranks them higher:
+On human-written queries, the stemmer finds more relevant articles and ranks them higher. Reproduced by `python3 eval/run_eval_es.py` (results in `eval/results/report_es.json`), stratified by query source like the PostgreSQL eval; auto-generated query sources are omitted here because they are mined from the indexed corpus itself:
 
 
-| Metric    | kazsearch_stem | standard | Improvement |
-| --------- | -------------- | -------- | ----------- |
-| Recall@10 | **0.358**      | 0.309    | +16%        |
-| MRR@10    | **0.671**      | 0.591    | +13%        |
+| Query set                          | Metric    | kazsearch_stem | standard | Improvement |
+| ---------------------------------- | --------- | -------------- | -------- | ----------- |
+| gold (human, n=51)                 | Recall@10 | **0.390**      | 0.309    | +26%        |
+|                                    | MRR@10    | **0.676**      | 0.591    | +14%        |
+| gold_v2 (human, URL-keyed, n=132)  | Recall@10 | **0.533**      | 0.451    | +18%        |
+|                                    | MRR@10    | **0.644**      | 0.569    | +13%        |
 
 
 ### vs Tengrinews.kz native search

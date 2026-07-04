@@ -11,6 +11,6 @@ public class KazakhStemPlugin extends Plugin implements AnalysisPlugin {
     @Override
     public Map<String, AnalysisModule.AnalysisProvider<TokenFilterFactory>> getTokenFilters() {
         return Map.of("kazsearch_stem", (indexSettings, environment, name, settings) ->
-                new KazakhStemTokenFilterFactory(indexSettings, name, settings));
+                new KazakhStemTokenFilterFactory(indexSettings, environment, name, settings));
     }
 }

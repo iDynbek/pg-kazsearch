@@ -160,24 +160,9 @@ install_plugin() {
     info "Installing plugin from ${zip_path}..."
     $es_plugin install --batch "file://$(realpath "$zip_path")"
 
-    # Copy platform-appropriate native lib to plugin root for LD_LIBRARY_PATH
-    local es_home="${ES_HOME:-$(dirname $(dirname $(command -v elasticsearch-plugin 2>/dev/null || echo /usr/share/elasticsearch/bin/x)))}"
-    local plugin_dir="${es_home}/plugins/${PLUGIN_NAME}"
-    if [[ -d "$plugin_dir" ]]; then
-        local arch=$(uname -m)
-        case "$arch" in
-            x86_64|amd64) local platform="linux-x86_64" ;;
-            aarch64|arm64) local platform="linux-aarch64" ;;
-            *) platform="" ;;
-        esac
-        if [[ -n "$platform" && -d "${plugin_dir}/${platform}" ]]; then
-            cp "${plugin_dir}/${platform}/"*.so "${plugin_dir}/" 2>/dev/null || true
-            info "Copied native lib for ${platform}"
-        fi
-    fi
-
+    # The plugin locates and loads its native library from the installed
+    # plugin directory at runtime — no copy step or LD_LIBRARY_PATH needed.
     green "✅ Plugin installed! Restart Elasticsearch to activate."
-    info "Make sure LD_LIBRARY_PATH includes ${plugin_dir} in your ES environment."
     cat <<'USAGE'
 
   Create an index with the Kazakh stemmer:

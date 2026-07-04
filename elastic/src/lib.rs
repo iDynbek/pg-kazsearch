@@ -7,6 +7,7 @@ use jni::sys::{jint, jstring};
 use jni::EnvUnowned;
 use kazsearch_core::lexicon::Lexicon;
 pub use kazsearch_core::stem;
+pub use kazsearch_core::ScriptMode;
 pub use kazsearch_core::StemConfig;
 
 const KAZSEARCH_OK: i32 = 0;
@@ -14,6 +15,7 @@ const KAZSEARCH_ERR_NULL_PTR: i32 = -1;
 const KAZSEARCH_ERR_UTF8: i32 = -2;
 const KAZSEARCH_ERR_LEXICON: i32 = -3;
 const KAZSEARCH_ERR_BUFFER_TOO_SMALL: i32 = -4;
+const KAZSEARCH_ERR_CONFIG: i32 = -6;
 
 /// Config is stored behind an `Arc` so the per-token hot path only clones a
 /// pointer, never the `StemConfig` itself (which owns the entire lexicon
@@ -33,8 +35,17 @@ fn load_lexicon(path: &str) -> Result<Option<Lexicon>, ()> {
     Lexicon::load(Path::new(trimmed)).map(Some).map_err(|_| ())
 }
 
-fn set_config(lexicon_path: Option<&str>) -> i32 {
+fn parse_script_mode(raw: &str) -> Result<ScriptMode, ()> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "" | "auto" => Ok(ScriptMode::Auto),
+        "cyrillic_only" | "cyrillic-only" | "cyrillic" => Ok(ScriptMode::CyrillicOnly),
+        _ => Err(()),
+    }
+}
+
+fn set_config(lexicon_path: Option<&str>, script_mode: ScriptMode) -> i32 {
     let mut cfg = StemConfig::default();
+    cfg.script_mode = script_mode;
 
     if let Some(path) = lexicon_path {
         cfg.lexicon = match load_lexicon(path) {
@@ -67,7 +78,7 @@ pub unsafe extern "C" fn kazsearch_init(lexicon_path: *const c_char) -> i32 {
     // contain any panic and surface it as an error code.
     std::panic::catch_unwind(|| {
         if lexicon_path.is_null() {
-            return set_config(None);
+            return set_config(None, ScriptMode::Auto);
         }
 
         let cstr = unsafe { std::ffi::CStr::from_ptr(lexicon_path) };
@@ -76,7 +87,7 @@ pub unsafe extern "C" fn kazsearch_init(lexicon_path: *const c_char) -> i32 {
             Err(_) => return KAZSEARCH_ERR_UTF8,
         };
 
-        set_config(Some(path))
+        set_config(Some(path), ScriptMode::Auto)
     })
     .unwrap_or(KAZSEARCH_ERR_PANIC)
 }
@@ -124,14 +135,24 @@ pub extern "system" fn Java_io_github_darkhanakh_kazsearch_KazakhStemmerNative_i
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
     lexicon_path: JString<'_>,
+    script_mode: JString<'_>,
 ) -> jint {
-    if lexicon_path.is_null() {
-        return set_config(None);
-    }
-
     let outcome = unowned_env.with_env(|env| -> jni::errors::Result<jint> {
+        let mode = if script_mode.is_null() {
+            ScriptMode::Auto
+        } else {
+            let raw = script_mode.try_to_string(env)?;
+            match parse_script_mode(raw.as_str()) {
+                Ok(v) => v,
+                Err(_) => return Ok(KAZSEARCH_ERR_CONFIG),
+            }
+        };
+
+        if lexicon_path.is_null() {
+            return Ok(set_config(None, mode));
+        }
         let path = lexicon_path.try_to_string(env)?;
-        Ok(set_config(Some(path.as_str())))
+        Ok(set_config(Some(path.as_str()), mode))
     });
     outcome.resolve::<jni::errors::ThrowRuntimeExAndDefault>()
 }

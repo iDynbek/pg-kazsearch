@@ -1,12 +1,20 @@
 """
 Evaluate Elasticsearch search quality with kazsearch_stem vs standard analyzer.
 
-Mirrors eval/run_eval.py metrics (Precision@k, Recall@k, MRR, nDCG@k) but
-runs against Elasticsearch instead of PostgreSQL.
+Mirrors eval/run_eval.py metrics (Precision@k, Recall@k, MRR, nDCG@k) and its
+stratification: metrics are broken out by query `source` (gold, gold_v2,
+title_keywords, body_sentence, morpho_variant, ...) because auto-generated
+queries are mined from the indexed corpus itself and overstate real-world
+quality — the gold rows are the honest headline numbers.
+
+Also loads eval/gold_queries_v2.jsonl, whose queries carry `relevant_urls`
+instead of `relevant_ids`; URLs are resolved against the `url` keyword field
+stored in the ES index (see eval/load_corpus_es.py).
 
 Usage:
     python3 eval/run_eval_es.py --auto eval/auto_queries.jsonl \
-                                --gold eval/gold_queries.jsonl
+                                --gold eval/gold_queries.jsonl \
+                                --gold-v2 eval/gold_queries_v2.jsonl
 """
 from __future__ import annotations
 
@@ -30,22 +38,6 @@ def es_request(url: str, method: str = "GET", body: dict | None = None) -> dict 
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=120) as resp:
         return json.loads(resp.read())
-
-
-def search_es(query: str, k: int, base_url: str, fields: list[str]) -> list[int]:
-    body = {
-        "size": k,
-        "query": {
-            "multi_match": {
-                "query": query,
-                "fields": fields,
-                "type": "best_fields"
-            }
-        },
-        "_source": False
-    }
-    resp = es_request(f"{base_url}/{INDEX}/_search", method="POST", body=body)
-    return [int(hit["_id"]) for hit in resp.get("hits", {}).get("hits", [])]
 
 
 def msearch_es(queries: list[tuple[int, str]], k: int, base_url: str,
@@ -80,6 +72,36 @@ def msearch_es(queries: list[tuple[int, str]], k: int, base_url: str,
         hits = response.get("hits", {}).get("hits", [])
         results[qid] = [int(h["_id"]) for h in hits]
     return results
+
+
+def resolve_relevant_urls(queries: list[dict], base_url: str) -> None:
+    """Resolve `relevant_urls` to ES doc ids in place (gold_v2 format).
+
+    URL-keyed gold files survive corpus reloads where serial ids do not.
+    Matches on the `url` keyword field stored by eval/load_corpus_es.py.
+    Queries that already carry `relevant_ids` (legacy format) are left alone.
+    """
+    all_urls = sorted({u for q in queries for u in q.get("relevant_urls", [])})
+    if not all_urls:
+        return
+    id_of: dict[str, int] = {}
+    for batch_start in range(0, len(all_urls), 500):
+        batch = all_urls[batch_start:batch_start + 500]
+        body = {
+            "size": 2 * len(batch),
+            "query": {"terms": {"url": batch}},
+            "_source": ["url"],
+        }
+        resp = es_request(f"{base_url}/{INDEX}/_search", method="POST", body=body)
+        for hit in resp.get("hits", {}).get("hits", []):
+            id_of[hit["_source"]["url"]] = int(hit["_id"])
+    unresolved = [u for u in all_urls if u not in id_of]
+    if unresolved:
+        print(f"  WARN: {len(unresolved)} relevant URLs not found in ES index", file=sys.stderr)
+    for q in queries:
+        urls = q.get("relevant_urls")
+        if urls and not q.get("relevant_ids"):
+            q["relevant_ids"] = [id_of[u] for u in urls if u in id_of]
 
 
 def precision_at_k(retrieved: list[int], relevant: set[int], k: int) -> float:
@@ -136,8 +158,21 @@ def load_queries(path: Path) -> list[dict]:
     return queries
 
 
+def _empty_metrics(ks: list[int]) -> dict[int, dict[str, list[float]]]:
+    return {k_val: {"precision": [], "recall": [], "mrr": [], "ndcg": []} for k_val in ks}
+
+
+def _summarize(m: dict[int, dict[str, list[float]]], ks: list[int]) -> dict:
+    def _avg(xs: list[float]) -> float:
+        return sum(xs) / len(xs) if xs else 0.0
+
+    return {k_val: {name: round(_avg(vals), 4) for name, vals in m[k_val].items()}
+            for k_val in ks}
+
+
 def evaluate_method(name: str, indexed: list[tuple[int, str, set[int]]],
-                    ks: list[int], base_url: str, fields: list[str]) -> dict:
+                    source_of: dict[int, str], ks: list[int], base_url: str,
+                    fields: list[str]) -> dict:
     max_k = max(ks)
     t0 = time.monotonic()
     print(f"  Running {name} ({len(indexed)} queries)...", end="", flush=True)
@@ -149,26 +184,35 @@ def evaluate_method(name: str, indexed: list[tuple[int, str, set[int]]],
     elapsed = time.monotonic() - t0
     print(f" {elapsed:.1f}s")
 
-    metrics: dict[int, dict[str, list[float]]] = {}
-    for k_val in ks:
-        metrics[k_val] = {"precision": [], "recall": [], "mrr": [], "ndcg": []}
+    metrics = _empty_metrics(ks)
+    by_source: dict[str, dict[int, dict[str, list[float]]]] = {}
 
     for idx, qt, relevant in indexed:
         results = all_results.get(idx, [])
+        src = source_of.get(idx, "unknown")
+        if src not in by_source:
+            by_source[src] = _empty_metrics(ks)
         for k_val in ks:
-            metrics[k_val]["precision"].append(precision_at_k(results, relevant, k_val))
-            metrics[k_val]["recall"].append(recall_at_k(results, relevant, k_val))
-            metrics[k_val]["mrr"].append(mrr(results[:k_val], relevant))
-            metrics[k_val]["ndcg"].append(ndcg_at_k(results, relevant, k_val))
+            for store in (metrics, by_source[src]):
+                store[k_val]["precision"].append(precision_at_k(results, relevant, k_val))
+                store[k_val]["recall"].append(recall_at_k(results, relevant, k_val))
+                store[k_val]["mrr"].append(mrr(results[:k_val], relevant))
+                store[k_val]["ndcg"].append(ndcg_at_k(results, relevant, k_val))
 
-    def _avg(xs: list[float]) -> float:
-        return sum(xs) / len(xs) if xs else 0.0
+    k0 = ks[0]
+    by_source_summary = {
+        src: {
+            "metrics": _summarize(m, ks),
+            "num_queries": len(m[k0]["recall"]),
+        }
+        for src, m in sorted(by_source.items())
+    }
 
-    summary = {}
-    for k_val in ks:
-        summary[k_val] = {m: round(_avg(vals), 4) for m, vals in metrics[k_val].items()}
-
-    return {"summary": summary, "elapsed": elapsed}
+    return {
+        "summary": _summarize(metrics, ks),
+        "by_source": by_source_summary,
+        "elapsed": elapsed,
+    }
 
 
 def print_report(results: dict, ks: list[int], n_queries: int):
@@ -186,31 +230,55 @@ def print_report(results: dict, ks: list[int], n_queries: int):
         row += f"  ({data['elapsed']:.1f}s)"
         print(row)
 
+    print()
+    print("=== Metrics by query source ===")
+    print("NOTE: auto-generated sources (title_keywords, body_sentence, morpho_variant)")
+    print("are mined from the indexed corpus itself and overstate real-world quality.")
+    print("The gold/gold_v2 rows (human-written queries) are the honest headline numbers.")
+    for label, data in results.items():
+        print(f"\n--- {label} ---")
+        print(header)
+        print("-" * len(header))
+        for src, src_data in data["by_source"].items():
+            row = f"{src + ' (n=' + str(src_data['num_queries']) + ')':36}"
+            for k_val in ks:
+                m = src_data["metrics"][k_val]
+                row += f"  {m['precision']:>8.4f}  {m['recall']:>8.4f}  {m['mrr']:>8.4f}  {m['ndcg']:>8.4f}"
+            print(row)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate ES search quality")
     parser.add_argument("--auto", default="eval/auto_queries.jsonl")
     parser.add_argument("--gold", default="eval/gold_queries.jsonl")
+    parser.add_argument("--gold-v2", default="eval/gold_queries_v2.jsonl",
+                        help="URL-keyed pooled-judgment gold queries")
     parser.add_argument("--k", type=int, nargs="+", default=[10, 50])
     parser.add_argument("--max-queries", type=int, default=0)
     parser.add_argument("--es-url", default=ES_URL)
     parser.add_argument("--report", default="eval/results/report_es.json")
     args = parser.parse_args()
 
-    queries = load_queries(Path(args.auto)) + load_queries(Path(args.gold))
+    queries = (load_queries(Path(args.auto)) + load_queries(Path(args.gold))
+               + load_queries(Path(args.gold_v2)))
     if not queries:
         sys.exit("No queries found.")
+
+    resolve_relevant_urls(queries, args.es_url)
+
     if args.max_queries > 0:
         queries = queries[:args.max_queries]
 
     print(f"Loaded {len(queries)} queries, k={args.k}")
 
     indexed: list[tuple[int, str, set[int]]] = []
+    source_of: dict[int, str] = {}
     for i, q in enumerate(queries):
         qt = q.get("query", "")
         rel = set(q.get("relevant_ids", []))
         if qt and rel:
             indexed.append((i, qt, rel))
+            source_of[i] = q.get("source", "unknown")
     print(f"Valid queries: {len(indexed)}")
 
     methods = {
@@ -220,7 +288,8 @@ def main():
 
     results = {}
     for label, fields in methods.items():
-        results[label] = evaluate_method(label, indexed, args.k, args.es_url, fields)
+        results[label] = evaluate_method(label, indexed, source_of, args.k,
+                                         args.es_url, fields)
 
     print_report(results, args.k, len(indexed))
 
@@ -230,6 +299,13 @@ def main():
     for label, data in results.items():
         serializable[label] = {
             "summary": {str(k): v for k, v in data["summary"].items()},
+            "by_source": {
+                src: {
+                    "metrics": {str(k): v for k, v in src_data["metrics"].items()},
+                    "num_queries": src_data["num_queries"],
+                }
+                for src, src_data in data["by_source"].items()
+            },
             "elapsed_s": round(data["elapsed"], 2),
         }
     serializable["num_queries"] = len(indexed)

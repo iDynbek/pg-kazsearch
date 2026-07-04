@@ -1,3 +1,6 @@
 grant {
+  // System.load / System.loadLibrary of the bundled Rust cdylib.
   permission java.lang.RuntimePermission "loadLibrary.*";
+  // Test/dev override for the native library search directory.
+  permission java.util.PropertyPermission "kazsearch.native.dir", "read";
 };

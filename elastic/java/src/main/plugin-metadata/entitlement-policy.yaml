@@ -1,2 +1,5 @@
+# Forward-compat entitlements (ES 9.x). The bundled lexicon
+# (data/kaz_stems.dict) is opened by the Rust native library, not through
+# Java file APIs, so no `files` entitlement is required for it.
 ALL-UNNAMED:
   - load_native_libraries
