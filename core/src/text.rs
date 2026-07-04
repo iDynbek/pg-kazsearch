@@ -10,11 +10,17 @@ pub fn is_vowel(cp: char) -> bool {
     is_back_vowel(cp) || is_front_vowel(cp)
 }
 
+/// Vowel including loan vowels (я/э), for guards that care about whether a
+/// stem ends vocalically rather than about native harmony class.
+pub fn is_vocalic(cp: char) -> bool {
+    is_vowel(cp) || is_loan_vowel(cp)
+}
+
 pub fn is_glide(cp: char) -> bool {
     matches!(cp, 'у' | 'и' | 'ю')
 }
 
-fn is_loan_vowel(cp: char) -> bool {
+pub fn is_loan_vowel(cp: char) -> bool {
     matches!(cp, 'я' | 'э')
 }
 
@@ -72,10 +78,14 @@ pub fn word_is_back(s: &str) -> bool {
         if is_glide(cp) {
             continue;
         }
-        if is_back_vowel(cp) {
+        // Loan vowels take a harmony class instead of being invisible:
+        // я = /ja/ patterns back (идеяға), э patterns front. Without this,
+        // я/э-final loanwords fail every harmony check until the 4-syllable
+        // tail fallback kicks in.
+        if is_back_vowel(cp) || cp == 'я' {
             found = true;
             back = true;
-        } else if is_front_vowel(cp) {
+        } else if is_front_vowel(cp) || cp == 'э' {
             found = true;
             back = false;
         }

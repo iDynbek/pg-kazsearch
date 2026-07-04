@@ -117,8 +117,8 @@ fn layer_guard(layer_id: i32, sfx: &str, base: &str, steps_so_far: i32) -> bool 
             }
             match utf8_last_cp(base) {
                 Some(cp) => match sfx {
-                    "ны" | "ні" => return is_vowel(cp),
-                    "ын" | "ін" | "ды" | "ді" | "ты" | "ті" => return !is_vowel(cp),
+                    "ны" | "ні" => return is_vocalic(cp),
+                    "ын" | "ін" | "ды" | "ді" | "ты" | "ті" => return !is_vocalic(cp),
                     _ => {}
                 },
                 None => return false,
@@ -281,7 +281,8 @@ fn try_elision_restore(s: &str) -> Option<String> {
     }
     let prev_cp = it.next()?;
 
-    if is_vowel(prev_cp) && !(s.ends_with("уз") || s.ends_with("із")) {
+    // Loan vowels (я/э) count: no elision happened after "агрессия" + н.
+    if (is_vowel(prev_cp) || is_loan_vowel(prev_cp)) && !(s.ends_with("уз") || s.ends_with("із")) {
         return None;
     }
 
