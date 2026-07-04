@@ -1,0 +1,27 @@
+{
+  "generated": "2026-07-04",
+  "source": "data/raw/apertium-kaz.kaz.lexc",
+  "apertium_lexc_sha": "0d82c015ddee75a743e4184b8c7ce9c388576b13",
+  "total_lemmas": 21791,
+  "rejected_inflected": 89,
+  "pos_counts": {
+    "N1": 13587,
+    "A1": 2930,
+    "V-IV": 1729,
+    "V-TV": 1709,
+    "NP-TOP": 1687,
+    "ADV": 960,
+    "V-TD": 566,
+    "A2": 198,
+    "N5": 154,
+    "NP-ORG": 61,
+    "NUM": 35,
+    "PRON": 30,
+    "N-COMPOUND": 13,
+    "A6": 10,
+    "N6": 8,
+    "N-INFL": 5,
+    "N3": 4,
+    "POSTADV": 4
+  }
+}
