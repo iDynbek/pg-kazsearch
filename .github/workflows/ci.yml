@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  PGRX_VERSION: "0.17.0"
+
+jobs:
+  core:
+    name: Core tests + parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run core tests (includes 5k C-parity gate)
+        run: cargo test -p kazsearch-core --release
+      - name: Build CLI
+        run: cargo build -p kazsearch-cli --release
+      - name: Lexicon builder is reproducible
+        run: |
+          python3 scripts/build_lexicon.py --stats
+          git diff --exit-code data/tsearch_data/kaz_stems.dict
+
+  pg_ext:
+    name: PostgreSQL extension (pg${{ matrix.pg }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [16, 17, 18]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: pg${{ matrix.pg }}
+      - name: Install PostgreSQL ${{ matrix.pg }} (pgdg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-${{ matrix.pg }} postgresql-server-dev-${{ matrix.pg }}
+      - name: Install cargo-pgrx
+        run: cargo install cargo-pgrx --version "$PGRX_VERSION" --locked
+      - name: pgrx init
+        run: cargo pgrx init --pg${{ matrix.pg }} /usr/lib/postgresql/${{ matrix.pg }}/bin/pg_config
+      - name: Install extension
+        run: |
+          cargo pgrx install --release -p pg_kazsearch \
+            --no-default-features --features pg${{ matrix.pg }} \
+            -c /usr/lib/postgresql/${{ matrix.pg }}/bin/pg_config --sudo
+          sharedir=$(/usr/lib/postgresql/${{ matrix.pg }}/bin/pg_config --sharedir)
+          sudo cp data/tsearch_data/kaz_stems.dict data/tsearch_data/kaz_stopwords.stop "$sharedir/tsearch_data/"
+          sudo cp pg_ext/sql/pg_kazsearch--*--*.sql "$sharedir/extension/"
+      - name: CREATE EXTENSION + smoke assertions
+        run: |
+          sudo systemctl start postgresql@${{ matrix.pg }}-main || sudo pg_ctlcluster ${{ matrix.pg }} main start
+          sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE EXTENSION pg_kazsearch;
+          -- stemming works through the dictionary
+          DO $$
+          BEGIN
+            ASSERT (SELECT ts_lexize('pg_kazsearch_dict', 'алмаларымыздағы')) = ARRAY['алма'],
+              'noun chain stemming failed';
+            ASSERT (SELECT ts_lexize('pg_kazsearch_dict', 'мектептеріміздегі')) = ARRAY['мектеп'],
+              'locative chain stemming failed';
+            -- numbers and urls must survive tsvector construction
+            ASSERT (SELECT to_tsvector('kazakh_cfg', '2026 жылы 15,5% https://example.kz') @@ '2026'::tsquery),
+              'numeric tokens are dropped';
+          END $$;
+          SQL
+
+  es_plugin:
+    name: Elasticsearch plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: es-native
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Build native library
+        run: ./scripts/build_elastic_native.sh
+      - name: Gradle test + bundle
+        working-directory: elastic/java
+        run: gradle test bundlePlugin
+      - name: Verify plugin zip contents
+        run: |
+          zip=$(ls elastic/java/build/distributions/analysis-kazsearch-*.zip)
+          unzip -l "$zip"
+          unzip -l "$zip" | grep -E "libkazsearch_elastic\.(so|dylib)" \
+            || { echo "::error::plugin zip is missing the native library"; exit 1; }
+          unzip -l "$zip" | grep -q "kaz_stems.dict" \
+            || { echo "::error::plugin zip is missing the bundled lexicon"; exit 1; }

@@ -1,3 +1,10 @@
 [workspace]
 members = ["core", "pg_ext", "cli", "elastic"]
 resolver = "2"
+
+# Single source of truth for the release version. Git tags (vX.Y.Z), the
+# Postgres extension default_version (@CARGO_VERSION@ in the .control file),
+# the ES plugin gradle build, and README examples must all match this.
+[workspace.package]
+version = "2.2.0"
+edition = "2021"
