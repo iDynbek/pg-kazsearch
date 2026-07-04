@@ -257,3 +257,57 @@ fn test_two_syllable_lexicon_word_not_overstemmed() {
     // Inflected forms of dictionary words must still stem normally.
     assert_eq!(stem("балалар", &cfg), "бала");
 }
+
+#[test]
+fn test_adjectival_ly_li_derivation() {
+    use kazsearch_core::lexicon::Lexicon;
+
+    let mut lex = Lexicon::new();
+    // "сулы" is itself a dictionary word (as in the real dict): the -лы
+    // guard blocks derivation from the monosyllabic base and the lexicon
+    // safety valve keeps the input.
+    for w in ["бала", "ашу", "су", "сулы"] {
+        lex.insert(w.to_string());
+    }
+    let cfg = StemConfig {
+        lexicon: Some(lex),
+        ..Default::default()
+    };
+
+    // -лы/-лі "having X" strips only from bases of >= 2 syllables.
+    assert_eq!(stem("балалы", &cfg), "бала");
+    assert_eq!(stem("ашулы", &cfg), "ашу");
+    // Monosyllabic base: guard blocks the strip.
+    assert_eq!(stem("сулы", &cfg), "сулы");
+}
+
+#[test]
+fn test_loan_vowel_harmony() {
+    // я/э carry a harmony class; loanword inflections stem directly.
+    assert_eq!(stem_default("идеяға"), "идея");
+    assert_eq!(stem_default("акцияларды"), "акция");
+    assert_eq!(stem_default("станцияда"), "станция");
+    // ...and elision restore must not fire after a loan vowel.
+    assert_eq!(stem_default("академияны"), "академия");
+}
+
+#[test]
+fn test_hyphenated_tokens_stem_last_run() {
+    use kazsearch_core::lexicon::Lexicon;
+
+    let mut lex = Lexicon::new();
+    for w in ["жек", "қон"] {
+        lex.insert(w.to_string());
+    }
+    let cfg = StemConfig {
+        lexicon: Some(lex),
+        ..Default::default()
+    };
+
+    assert_eq!(stem("жекпе-жекте", &cfg), "жекпе-жек");
+    assert_eq!(stem("көші-қонның", &cfg), "көші-қон");
+    // Trailing separator: nothing after the run to lose.
+    assert_eq!(stem("сөз-", &cfg), "сөз-");
+    // Mixed-script or non-separator punctuation still passes through.
+    assert_eq!(stem("kaspi-банкті", &cfg), "kaspi-банкті");
+}

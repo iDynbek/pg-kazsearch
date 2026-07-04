@@ -132,7 +132,7 @@ pub fn stem(word: &str, cfg: &StemConfig) -> String {
     if cfg.script_mode == ScriptMode::CyrillicOnly {
         return match analyzed.class {
             ScriptClass::Cyrillic => stem_canonical(&analyzed.lowered, cfg).stem,
-            _ => analyzed.lowered,
+            _ => stem_separated_cyrillic(&analyzed.lowered, cfg).unwrap_or(analyzed.lowered),
         };
     }
 
@@ -145,8 +145,47 @@ pub fn stem(word: &str, cfg: &StemConfig) -> String {
             };
             stem_latin(latin, cfg).unwrap_or(analyzed.lowered)
         }
-        ScriptClass::Mixed | ScriptClass::Unsupported => analyzed.lowered,
+        ScriptClass::Mixed | ScriptClass::Unsupported => {
+            stem_separated_cyrillic(&analyzed.lowered, cfg).unwrap_or(analyzed.lowered)
+        }
     }
+}
+
+/// Hyphenated/apostrophe Cyrillic tokens (жекпе-жекте, көші-қонның) are
+/// classified Unsupported by `classify_script`, so they used to pass through
+/// unstemmed. Kazakh inflects the final element of such compounds: stem the
+/// last Cyrillic run in place and keep the rest of the token verbatim.
+fn stem_separated_cyrillic(lowered: &str, cfg: &StemConfig) -> Option<String> {
+    let mut has_sep = false;
+    for ch in lowered.chars() {
+        if matches!(ch, '-' | '\'' | '\u{2019}' | '\u{02BC}') {
+            has_sep = true;
+        } else if !script::is_cyrillic_letter(ch) {
+            return None;
+        }
+    }
+    if !has_sep {
+        return None;
+    }
+
+    let mut last_run: Option<(usize, usize)> = None;
+    let mut cur_start: Option<usize> = None;
+    for (i, ch) in lowered.char_indices() {
+        if script::is_cyrillic_letter(ch) {
+            let s = *cur_start.get_or_insert(i);
+            last_run = Some((s, i + ch.len_utf8()));
+        } else {
+            cur_start = None;
+        }
+    }
+    let (start, end) = last_run?;
+
+    let stemmed = stem_canonical(&lowered[start..end], cfg).stem;
+    let mut out = String::with_capacity(start + stemmed.len() + (lowered.len() - end));
+    out.push_str(&lowered[..start]);
+    out.push_str(&stemmed);
+    out.push_str(&lowered[end..]);
+    Some(out)
 }
 
 fn no_strip_candidate(len: usize) -> explore::Candidate {

@@ -156,7 +156,7 @@ fn latin_char_options(ch: char) -> Option<&'static [&'static str]> {
     }
 }
 
-fn is_cyrillic_letter(ch: char) -> bool {
+pub fn is_cyrillic_letter(ch: char) -> bool {
     ('\u{0400}'..='\u{04FF}').contains(&ch) || ('\u{0500}'..='\u{052F}').contains(&ch)
 }
 
