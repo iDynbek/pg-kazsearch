@@ -145,6 +145,11 @@ fn layer_guard(layer_id: i32, sfx: &str, base: &str, steps_so_far: i32) -> bool 
             if matches!(sfx, "лық" | "лік" | "дық" | "дік" | "тық" | "тік") {
                 return count_syllables(base) >= 2;
             }
+            // Adjectival -лы/-лі ("having X"): only strip from bases that are
+            // plausible standalone nominals, mirroring the -лық/-лік guard.
+            if matches!(sfx, "лы" | "лі") {
+                return count_syllables(base) >= 2;
+            }
         }
         _ => {}
     }
