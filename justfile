@@ -7,6 +7,7 @@ pg_db       := "kazsearch"
 corpus      := "data/corpus/articles.jsonl"
 auto_q      := "eval/auto_queries.jsonl"
 gold_q      := "eval/gold_queries.jsonl"
+gold_v2_q   := "eval/gold_queries_v2.jsonl"
 scrape_lim  := "3000"
 eval_max_q  := "0"
 opt_report  := "eval/results/optimized_weights.json"
@@ -142,7 +143,12 @@ gen-queries:
 
 # Run FTS vs trigram comparison
 eval-search:
-    python3 eval/run_eval.py --auto "{{ auto_q }}" --gold "{{ gold_q }}" --max-queries {{ eval_max_q }}
+    python3 eval/run_eval.py --auto "{{ auto_q }}" --gold "{{ gold_q }}" \
+        --gold-v2 "{{ gold_v2_q }}" --max-queries {{ eval_max_q }}
+
+# Validate the gold_v2 dataset gates
+validate-gold:
+    python3 eval/validate_gold.py --gold "{{ gold_v2_q }}"
 
 # Run CMA-ES weight optimizer
 optimize:

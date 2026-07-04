@@ -1,0 +1,147 @@
+{"query": "ауа райына байланысты ескерту", "theme": "weather_warnings", "note": "dative + derived adjective"}
+{"query": "ауа райының нашарлауы", "theme": "weather_warnings", "note": "genitive + verbal noun"}
+{"query": "қазгидромет болжамы", "theme": "weather_warnings", "note": "possessive"}
+{"query": "боран кезінде жол жабылды", "theme": "weather_warnings", "note": "locative postposition + passive past"}
+{"query": "ескерту жарияланды", "theme": "weather_warnings", "note": "plain + passive past"}
+{"query": "доллар бағамы", "theme": "currency", "note": "plain possessive - control"}
+{"query": "доллардың арзандауы", "theme": "currency", "note": "genitive + verbal noun"}
+{"query": "теңгенің нығаюы", "theme": "currency", "note": "genitive + verbal noun"}
+{"query": "валюта бағамдарының өзгеруі", "theme": "currency", "note": "plural genitive + verbal noun"}
+{"query": "айырбастау пункттеріндегі бағам", "theme": "currency", "note": "plural locative -деги"}
+{"query": "тұрғын үй бағдарламасы", "theme": "housing", "note": "compound + possessive"}
+{"query": "пәтер бағаларының өсуі", "theme": "housing", "note": "plural genitive + verbal noun"}
+{"query": "тұрғын үйлерді салу", "theme": "housing", "note": "plural accusative + infinitive"}
+{"query": "ипотека алу шарттары", "theme": "housing", "note": "verbal noun + plural possessive"}
+{"query": "жалдамалы пәтерлер", "theme": "housing", "note": "derived adjective + plural"}
+{"query": "мектеп оқушылары", "theme": "schools", "note": "possessive plural - control"}
+{"query": "мектептердегі оқу үдерісі", "theme": "schools", "note": "plural locative"}
+{"query": "оқушылардың емтихан тапсыруы", "theme": "schools", "note": "plural genitive + verbal noun"}
+{"query": "мұғалімдердің жалақысы", "theme": "schools", "note": "plural genitive + possessive"}
+{"query": "мектеп құрылысы", "theme": "schools", "note": "compound possessive"}
+{"query": "жол апаты", "theme": "road_accidents", "note": "plain - control"}
+{"query": "жол апатынан қаза тапқандар", "theme": "road_accidents", "note": "ablative + participle plural"}
+{"query": "көлік соқтығысты", "theme": "road_accidents", "note": "reciprocal past"}
+{"query": "апатқа ұшыраған жүргізуші", "theme": "road_accidents", "note": "dative + participle"}
+{"query": "жаяу жүргіншіні қағып кетті", "theme": "road_accidents", "note": "accusative + compound verb"}
+{"query": "қылмыскерлерді ұстады", "theme": "crime", "note": "plural accusative + past - control"}
+{"query": "күдіктілердің ұсталуы", "theme": "crime", "note": "plural genitive + passive verbal noun"}
+{"query": "қылмыстық іс қозғалды", "theme": "crime", "note": "derived adjective + passive past"}
+{"query": "ұрлық жасаған адам", "theme": "crime", "note": "participle"}
+{"query": "кісі өлтіру ісі", "theme": "crime", "note": "infinitive + possessive"}
+{"query": "жер сілкінісі", "theme": "earthquake", "note": "compound - control"}
+{"query": "жер сілкінісін сейсмологтар тіркеді", "theme": "earthquake", "note": "accusative + past"}
+{"query": "алматыдағы жер сілкіністері", "theme": "earthquake", "note": "locative -дағы + plural"}
+{"query": "сілкіністің эпицентрі", "theme": "earthquake", "note": "genitive + possessive"}
+{"query": "тоқаевтың тапсырмалары", "theme": "president", "note": "genitive + plural possessive"}
+{"query": "президенттің жарлығы", "theme": "president", "note": "genitive + possessive"}
+{"query": "мемлекет басшысының кездесуі", "theme": "president", "note": "compound genitive + verbal noun"}
+{"query": "тоқаев келіссөз жүргізді", "theme": "president", "note": "past tense verb"}
+{"query": "президент заңға қол қойды", "theme": "president", "note": "dative + idiom past"}
+{"query": "трамптың мәлімдемесі", "theme": "trump_usa", "note": "genitive + possessive"}
+{"query": "трамп жариялаған шешім", "theme": "trump_usa", "note": "participle"}
+{"query": "ақш президентінің саясаты", "theme": "trump_usa", "note": "compound genitive"}
+{"query": "трамп салған баждар", "theme": "trump_usa", "note": "participle + plural"}
+{"query": "иранға жасалған соққы", "theme": "iran", "note": "dative + passive participle"}
+{"query": "иранның ядролық бағдарламасы", "theme": "iran", "note": "genitive + derived adjective"}
+{"query": "израиль мен иран арасындағы қақтығыс", "theme": "iran", "note": "postposition + -дағы"}
+{"query": "иран соғысы", "theme": "iran", "note": "possessive - control"}
+{"query": "ресей мен украина келіссөздері", "theme": "russia_ukraine", "note": "conjunction + plural possessive"}
+{"query": "украинадағы соғыс", "theme": "russia_ukraine", "note": "locative -дағы"}
+{"query": "ресейдің шабуылдары", "theme": "russia_ukraine", "note": "genitive + plural possessive"}
+{"query": "соғысты тоқтату жоспары", "theme": "russia_ukraine", "note": "accusative + infinitive + possessive"}
+{"query": "жаңа әкім тағайындалды", "theme": "appointments", "note": "passive past - control"}
+{"query": "әкімнің қызметінен кетуі", "theme": "appointments", "note": "genitive + ablative + verbal noun"}
+{"query": "облыс әкімдерінің ауысуы", "theme": "appointments", "note": "plural genitive + verbal noun"}
+{"query": "министр қызметке тағайындалды", "theme": "appointments", "note": "dative + passive past"}
+{"query": "заң қабылданды", "theme": "laws", "note": "passive past - control"}
+{"query": "заңға енгізілген өзгерістер", "theme": "laws", "note": "dative + passive participle + plural"}
+{"query": "жаңа заңның талаптары", "theme": "laws", "note": "genitive + plural possessive"}
+{"query": "конституцияға өзгеріс енгізу", "theme": "laws", "note": "dative + infinitive"}
+{"query": "зейнетақы мөлшері", "theme": "pensions", "note": "possessive - control"}
+{"query": "зейнетақының көбеюі", "theme": "pensions", "note": "genitive + verbal noun"}
+{"query": "зейнеткерлерге төлемдер", "theme": "pensions", "note": "plural dative + plural"}
+{"query": "зейнет жасының өзгеруі", "theme": "pensions", "note": "compound genitive + verbal noun"}
+{"query": "салық мөлшерлемесі", "theme": "taxes", "note": "possessive - control"}
+{"query": "салықтардың өсуі", "theme": "taxes", "note": "plural genitive + verbal noun"}
+{"query": "жаңа салық кодексі", "theme": "taxes", "note": "possessive"}
+{"query": "салық төлеушілерге талаптар", "theme": "taxes", "note": "agentive plural dative"}
+{"query": "жүргізушілерге айыппұл", "theme": "drivers", "note": "plural dative"}
+{"query": "жүргізуші куәлігін алу", "theme": "drivers", "note": "accusative possessive + infinitive"}
+{"query": "жол ережелерінің өзгеруі", "theme": "drivers", "note": "plural genitive + verbal noun"}
+{"query": "мас күйінде көлік жүргізген", "theme": "drivers", "note": "locative + participle"}
+{"query": "өрт сөндірушілер", "theme": "fires", "note": "agentive plural - control"}
+{"query": "өрттің шығу себебі", "theme": "fires", "note": "genitive + verbal noun + possessive"}
+{"query": "үйлердің өртенуі", "theme": "fires", "note": "plural genitive + passive verbal noun"}
+{"query": "өрт кезінде құтқарылғандар", "theme": "fires", "note": "passive participle plural"}
+{"query": "су тасқыны", "theme": "floods", "note": "compound - control"}
+{"query": "су басқан аудандар", "theme": "floods", "note": "participle + plural"}
+{"query": "тасқыннан зардап шеккендер", "theme": "floods", "note": "ablative + participle plural"}
+{"query": "алаяқтардың айласы", "theme": "fraud", "note": "plural genitive + possessive"}
+{"query": "интернет алаяқтығы", "theme": "fraud", "note": "compound possessive"}
+{"query": "алаяқтық жасағандар ұсталды", "theme": "fraud", "note": "participle plural + passive past"}
+{"query": "ақшасын алдап алған", "theme": "fraud", "note": "possessive accusative + compound verb"}
+{"query": "есірткі саудасы", "theme": "drugs", "note": "possessive - control"}
+{"query": "есірткі таратқандар", "theme": "drugs", "note": "participle plural"}
+{"query": "есірткімен күрес", "theme": "drugs", "note": "instrumental"}
+{"query": "дәрігерлердің жұмысы", "theme": "healthcare", "note": "plural genitive + possessive"}
+{"query": "ауруханаға жеткізілді", "theme": "healthcare", "note": "dative + passive past"}
+{"query": "аурудың таралуы", "theme": "healthcare", "note": "genitive + verbal noun"}
+{"query": "балаларды емдеу", "theme": "healthcare", "note": "plural accusative + infinitive"}
+{"query": "спортшылардың жетістіктері", "theme": "sports", "note": "plural genitive + plural possessive"}
+{"query": "чемпионатта жеңіске жетті", "theme": "sports", "note": "locative + dative + past"}
+{"query": "боксшы жекпе-жекте жеңді", "theme": "sports", "note": "hyphenated + locative + past"}
+{"query": "олимпиада ойындарына қатысу", "theme": "sports", "note": "plural dative + infinitive"}
+{"query": "футбол құрамасы", "theme": "football", "note": "possessive - control"}
+{"query": "футболшылардың ойыны", "theme": "football", "note": "plural genitive + possessive"}
+{"query": "құраманың жаңа бапкері", "theme": "football", "note": "genitive + possessive"}
+{"query": "жалақының өсуі", "theme": "wages_jobs", "note": "genitive + verbal noun"}
+{"query": "жұмыссыздық деңгейі", "theme": "wages_jobs", "note": "privative derived noun + possessive"}
+{"query": "жұмыс орындарын ашу", "theme": "wages_jobs", "note": "plural accusative possessive + infinitive"}
+{"query": "еңбекақыны көтеру", "theme": "wages_jobs", "note": "accusative + infinitive"}
+{"query": "балалардың қауіпсіздігі", "theme": "children_family", "note": "plural genitive + abstract possessive"}
+{"query": "көпбалалы отбасыларға көмек", "theme": "children_family", "note": "derived adjective + plural dative"}
+{"query": "жетім балаларды асырап алу", "theme": "children_family", "note": "plural accusative + compound infinitive"}
+{"query": "балаларға жәрдемақы төленеді", "theme": "children_family", "note": "plural dative + passive present"}
+{"query": "полиция күдіктіні ұстады", "theme": "police", "note": "accusative + past - control"}
+{"query": "полицейлердің рейді", "theme": "police", "note": "plural genitive + possessive"}
+{"query": "іздестіріліп жүрген адам табылды", "theme": "police", "note": "passive converb + participle + passive past"}
+{"query": "сот үкімі шықты", "theme": "courts", "note": "possessive + past - control"}
+{"query": "сотталғандардың жазасы", "theme": "courts", "note": "passive participle plural genitive"}
+{"query": "қамауға алынды", "theme": "courts", "note": "dative + passive past"}
+{"query": "түрмеге жабылды", "theme": "courts", "note": "dative + passive past"}
+{"query": "әуежайда ұшақ кешікті", "theme": "aviation", "note": "locative + past"}
+{"query": "ұшақтардың рейстері", "theme": "aviation", "note": "plural genitive + plural possessive"}
+{"query": "жаңа әуе рейстері ашылды", "theme": "aviation", "note": "plural possessive + passive past"}
+{"query": "мал шаруашылығын дамыту", "theme": "agriculture", "note": "accusative possessive + infinitive"}
+{"query": "фермерлерге субсидиялар", "theme": "agriculture", "note": "plural dative + plural"}
+{"query": "ауыл шаруашылығының өнімдері", "theme": "agriculture", "note": "compound genitive + plural"}
+{"query": "қар жауып жол жабылды", "theme": "snow_storm", "note": "converb + passive past"}
+{"query": "боранда адасқандар құтқарылды", "theme": "snow_storm", "note": "locative + participle plural + passive"}
+{"query": "қарлы боранға байланысты шектеу", "theme": "snow_storm", "note": "derived adjective + dative"}
+{"query": "мерекеге орай құттықтау", "theme": "holidays", "note": "dative postposition + verbal noun"}
+{"query": "мереке күндері демалыс", "theme": "holidays", "note": "plural possessive"}
+{"query": "наурыз мейрамын тойлау", "theme": "holidays", "note": "accusative possessive + infinitive"}
+{"query": "студенттерге гранттар бөлінді", "theme": "universities", "note": "plural dative + passive past"}
+{"query": "университеттердегі оқу ақысы", "theme": "universities", "note": "plural locative -деги + possessive"}
+{"query": "жоғары оқу орындарына түсу", "theme": "universities", "note": "plural dative possessive + infinitive"}
+{"query": "шетелге қоныс аударғандар", "theme": "migration", "note": "dative + participle plural"}
+{"query": "көші-қон саясаты", "theme": "migration", "note": "hyphenated compound + possessive"}
+{"query": "қандастардың оралуы", "theme": "migration", "note": "plural genitive + verbal noun"}
+{"query": "электр энергиясының тарифтері", "theme": "utilities", "note": "compound genitive + plural possessive"}
+{"query": "жарық өшірілді", "theme": "utilities", "note": "passive past"}
+{"query": "коммуналдық қызметтердің қымбаттауы", "theme": "utilities", "note": "derived adjective + plural genitive + verbal noun"}
+{"query": "азық-түлік бағаларының өсуі", "theme": "food_prices", "note": "hyphenated + plural genitive + verbal noun"}
+{"query": "нан бағасы қымбаттады", "theme": "food_prices", "note": "possessive + past"}
+{"query": "өнімдердің қымбаттауы", "theme": "food_prices", "note": "plural genitive + verbal noun"}
+{"query": "мұнай өндіру", "theme": "oil_energy", "note": "infinitive - control"}
+{"query": "мұнай бағасының құбылуы", "theme": "oil_energy", "note": "genitive + verbal noun"}
+{"query": "газ құбырының құрылысы", "theme": "oil_energy", "note": "genitive + possessive"}
+{"query": "жемқорлыққа қарсы күрес", "theme": "corruption", "note": "dative + postposition"}
+{"query": "пара алған шенеунік", "theme": "corruption", "note": "participle"}
+{"query": "жемқорлық фактілері анықталды", "theme": "corruption", "note": "plural possessive + passive past"}
+{"query": "қазақстан мен қытай ынтымақтастығы", "theme": "china_relations", "note": "conjunction + abstract possessive"}
+{"query": "қытаймен сауда байланыстары", "theme": "china_relations", "note": "instrumental + plural possessive"}
+{"query": "туристерге жаңа бағыттар", "theme": "tourism", "note": "plural dative + plural"}
+{"query": "туризмді дамыту жоспары", "theme": "tourism", "note": "accusative + infinitive + possessive"}
+{"query": "интернет жылдамдығы", "theme": "internet", "note": "possessive - control"}
+{"query": "байланыс үзілді", "theme": "internet", "note": "passive past"}

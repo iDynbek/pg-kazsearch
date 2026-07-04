@@ -159,6 +159,45 @@ def ndcg_at_k(retrieved: list[int], relevant: set[int], k: int) -> float:
     return dcg / idcg
 
 
+def resolve_relevant_urls(queries: list[dict], container: str, db: str, user: str) -> None:
+    """Resolve `relevant_urls` to article ids in place (gold_v2 format).
+
+    URL-keyed gold files survive corpus reloads where serial ids do not.
+    Queries that already carry `relevant_ids` (legacy format) are left alone.
+    """
+    all_urls = sorted({u for q in queries for u in q.get("relevant_urls", [])})
+    if not all_urls:
+        return
+    id_of: dict[str, int] = {}
+    for batch_start in range(0, len(all_urls), 500):
+        batch = all_urls[batch_start:batch_start + 500]
+        values = ",".join(f"('{qlit(u)}')" for u in batch)
+        sql = f"SELECT a.url, a.id FROM articles a JOIN (VALUES {values}) v(url) ON a.url = v.url;"
+        for line in psql_stdin(sql, container, db, user).splitlines():
+            parts = line.split("\t")
+            if len(parts) == 2:
+                id_of[parts[0]] = int(parts[1])
+    unresolved = [u for u in all_urls if u not in id_of]
+    if unresolved:
+        print(f"  WARN: {len(unresolved)} relevant URLs not found in corpus", file=sys.stderr)
+    for q in queries:
+        urls = q.get("relevant_urls")
+        if urls and not q.get("relevant_ids"):
+            q["relevant_ids"] = [id_of[u] for u in urls if u in id_of]
+
+
+def bootstrap_ci(values: list[float], n_boot: int = 2000, seed: int = 42) -> tuple[float, float]:
+    """Percentile bootstrap 95% CI for the mean of per-query metric values."""
+    if not values:
+        return (0.0, 0.0)
+    rng = random.Random(seed)
+    n = len(values)
+    means = sorted(sum(rng.choices(values, k=n)) / n for _ in range(n_boot))
+    lo = means[int(0.025 * n_boot)]
+    hi = means[min(int(0.975 * n_boot), n_boot - 1)]
+    return (round(lo, 4), round(hi, 4))
+
+
 def load_queries(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -297,11 +336,16 @@ def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
     fts_summary = _summarize(fts_metrics)
     fts_sample_summary = _summarize(fts_on_trgm_sample)
     nostem_summary = _summarize(nostem_metrics)
+    k0 = ks[0]
     by_source_summary = {
         src: {
             "metrics": _summarize(m),
             "nostem_metrics": _summarize(nostem_by_source[src]),
-            "num_queries": len(m[ks[0]]["recall"]),
+            "num_queries": len(m[k0]["recall"]),
+            "ci95": {
+                f"recall@{k0}": bootstrap_ci(m[k0]["recall"]),
+                f"mrr@{k0}": bootstrap_ci(m[k0]["mrr"]),
+            },
         }
         for src, m in sorted(fts_by_source.items())
     }
@@ -382,6 +426,10 @@ def print_report(result: dict):
                     m = data["nostem_metrics"][k_val]
                     row += f"  {m['precision']:>8.4f}  {m['recall']:>8.4f}  {m['mrr']:>8.4f}  {m['ndcg']:>8.4f}"
                 print(row)
+            ci = data.get("ci95")
+            if ci:
+                parts = [f"{name} 95% CI [{lo:.4f}, {hi:.4f}]" for name, (lo, hi) in ci.items()]
+                print(f"{'  └ bootstrap':28}  " + "; ".join(parts))
 
     print()
     print(f"=== Head-to-head on {n_trgm}-query sample ===")
@@ -410,6 +458,8 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate FTS vs trigram search quality")
     parser.add_argument("--auto", default="eval/auto_queries.jsonl", help="Auto-generated queries")
     parser.add_argument("--gold", default="eval/gold_queries.jsonl", help="Manual gold queries")
+    parser.add_argument("--gold-v2", default="eval/gold_queries_v2.jsonl",
+                        help="URL-keyed pooled-judgment gold queries")
     parser.add_argument("--k", type=int, nargs="+", default=[10, 50], help="k values for metrics")
     parser.add_argument("--trgm-thresholds", type=float, nargs="+",
                         default=[0.2, 0.3, 0.4],
@@ -425,9 +475,12 @@ def main():
     parser.add_argument("--report", default="eval/results/report.json")
     args = parser.parse_args()
 
-    queries = load_queries(Path(args.auto)) + load_queries(Path(args.gold))
+    queries = (load_queries(Path(args.auto)) + load_queries(Path(args.gold))
+               + load_queries(Path(args.gold_v2)))
     if not queries:
         sys.exit("No queries found. Run generate_queries.py first.")
+
+    resolve_relevant_urls(queries, args.container, args.db, args.user)
 
     if args.max_queries > 0:
         queries = queries[: args.max_queries]
@@ -451,6 +504,7 @@ def main():
                 "metrics": {str(k): v for k, v in data["metrics"].items()},
                 "nostem_metrics": {str(k): v for k, v in data.get("nostem_metrics", {}).items()},
                 "num_queries": data["num_queries"],
+                "ci95": data.get("ci95", {}),
             }
             for src, data in result.get("fts_by_source", {}).items()
         },

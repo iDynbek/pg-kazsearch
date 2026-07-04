@@ -1,0 +1,27 @@
+{
+  "created": "2026-07-04",
+  "method": "pooled judgment: top-15 union of kazakh_cfg FTS, simple FTS, and trigram (title||body) per query; every pooled candidate judged for topical relevance",
+  "seed_queries": 147,
+  "final_queries": 132,
+  "dropped_zero_relevant": 14,
+  "dropped_circular": 1,
+  "themes": 39,
+  "relevant_pairs": 955,
+  "distinct_relevant_urls": 748,
+  "quality_control": {
+    "blind_rejudge_sample": 30,
+    "rejudged_pairs": 583,
+    "raw_agreement": 0.959,
+    "cohens_kappa": 0.899,
+    "disagreements_adjudicated": 24,
+    "labels_flipped_by_adjudication": 16
+  },
+  "baseline_gold_v2": {
+    "fts_recall@10": 0.4955,
+    "fts_recall@10_ci95": [0.4368, 0.5552],
+    "fts_mrr@10": 0.6969,
+    "fts_mrr@10_ci95": [0.6287, 0.7673],
+    "nostem_recall@10": 0.1869,
+    "nostem_mrr@10": 0.4198
+  }
+}
