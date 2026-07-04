@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Kazakh stemmer for PostgreSQL full-text search. BFS suffix-stripping over ordered morphological layers (noun: DERIV→PLUR→POSS→CASE→PRED, verb: VVOICE→VNEG→VTENSE→VPERSON) with vowel harmony enforcement, penalty-based candidate scoring, optional lexicon verification, and morphophonological stem repair. ~80.88% token coverage.
+Kazakh stemmer for PostgreSQL full-text search. BFS suffix-stripping over ordered morphological layers (noun: DERIV→PLUR→POSS→CASE→PRED, verb: VVOICE→VNEG→VTENSE→VPERSON) with vowel harmony enforcement, penalty-based candidate scoring, optional lexicon verification, and morphophonological stem repair. Token coverage (measured by `eval/measure_stem_coverage.py` over 45.7k corpus tokens): 74.5% analyzed, 86.4% recognized (stemmed or dictionary lemma).
 
 No prior Kazakh stemmer exists for PostgreSQL or Elasticsearch. This is the first.
 

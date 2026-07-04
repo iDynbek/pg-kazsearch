@@ -41,7 +41,9 @@ def psql_stdin(sql: str, container: str, db: str, user: str) -> str:
 
 
 def batch_search_fts(queries: list[tuple[int, str]], k: int,
-                     container: str, db: str, user: str) -> dict[int, list[int]]:
+                     container: str, db: str, user: str,
+                     fts_config: str = "kazakh_cfg",
+                     fts_column: str = "fts_vector") -> dict[int, list[int]]:
     if not queries:
         return {}
 
@@ -53,8 +55,8 @@ FROM qs,
 LATERAL (
     SELECT id
     FROM articles
-    WHERE fts_vector @@ websearch_to_tsquery('kazakh_cfg', qs.query)
-    ORDER BY ts_rank_cd(fts_vector, websearch_to_tsquery('kazakh_cfg', qs.query)) DESC
+    WHERE {fts_column} @@ websearch_to_tsquery('{fts_config}', qs.query)
+    ORDER BY ts_rank_cd({fts_column}, websearch_to_tsquery('{fts_config}', qs.query)) DESC
     LIMIT {k}
 ) sub;
 """
@@ -103,6 +105,20 @@ LATERAL (
             except ValueError:
                 pass
     return results
+
+
+def ensure_nostem_column(container: str, db: str, user: str) -> None:
+    """Materialize a `simple` (no stemming, no stopwords) tsvector column so the
+    stemmer's contribution can be isolated from tokenization itself."""
+    sql = """
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS fts_simple tsvector
+    GENERATED ALWAYS AS (
+        setweight(to_tsvector('simple', title), 'A') ||
+        setweight(to_tsvector('simple', body), 'B')
+    ) STORED;
+CREATE INDEX IF NOT EXISTS idx_articles_fts_simple ON articles USING GIN (fts_simple);
+"""
+    psql_stdin(sql, container, db, user)
 
 
 def precision_at_k(retrieved: list[int], relevant: set[int], k: int) -> float:
@@ -161,16 +177,18 @@ def load_queries(path: Path) -> list[dict]:
 
 def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
              container: str, db: str, user: str,
-             trgm_sample: int = 0) -> dict:
+             trgm_sample: int = 0, seed: int = 42) -> dict:
     max_k = max(ks)
     t0 = time.monotonic()
 
     indexed: list[tuple[int, str, set[int]]] = []
+    source_of: dict[int, str] = {}
     for i, q in enumerate(queries):
         qt = q.get("query", "")
         rel = set(q.get("relevant_ids", []))
         if qt and rel:
             indexed.append((i, qt, rel))
+            source_of[i] = q.get("source", "unknown")
 
     print(f"  Running FTS searches ({len(indexed)} queries)...", end="", flush=True)
     fts_all: dict[int, list[int]] = {}
@@ -180,10 +198,21 @@ def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
     fts_elapsed = time.monotonic() - t0
     print(f" {fts_elapsed:.1f}s")
 
+    print(f"  Running no-stem baseline searches ({len(indexed)} queries)...", end="", flush=True)
+    t_ns = time.monotonic()
+    ensure_nostem_column(container, db, user)
+    nostem_all: dict[int, list[int]] = {}
+    for batch_start in range(0, len(indexed), BATCH):
+        batch = [(idx, qt) for idx, qt, _ in indexed[batch_start:batch_start + BATCH]]
+        nostem_all.update(batch_search_fts(batch, max_k, container, db, user,
+                                           fts_config="simple", fts_column="fts_simple"))
+    print(f" {time.monotonic() - t_ns:.1f}s")
+
     trgm_indexed = indexed
     if trgm_sample > 0 and trgm_sample < len(indexed):
-        trgm_indexed = random.sample(indexed, trgm_sample)
-        print(f"  Trigram: sampling {trgm_sample}/{len(indexed)} queries")
+        rng = random.Random(seed)
+        trgm_indexed = rng.sample(indexed, trgm_sample)
+        print(f"  Trigram: sampling {trgm_sample}/{len(indexed)} queries (seed={seed})")
     trgm_idx_set = {idx for idx, _, _ in trgm_indexed}
 
     trgm_all: dict[float, dict[int, list[int]]] = {}
@@ -199,11 +228,16 @@ def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
                 print(f"    batch {bi+1}/{n_batches}  ({time.monotonic()-t1:.0f}s)", flush=True)
         print(f"  trigram t={t:.2f} done in {time.monotonic() - t1:.1f}s")
 
-    fts_metrics: dict[int, dict[str, list[float]]] = {}
-    fts_on_trgm_sample: dict[int, dict[str, list[float]]] = {}
-    for k_val in ks:
-        fts_metrics[k_val] = {"precision": [], "recall": [], "mrr": [], "ndcg": []}
-        fts_on_trgm_sample[k_val] = {"precision": [], "recall": [], "mrr": [], "ndcg": []}
+    def _empty_metrics() -> dict[int, dict[str, list[float]]]:
+        return {k_val: {"precision": [], "recall": [], "mrr": [], "ndcg": []} for k_val in ks}
+
+    fts_metrics = _empty_metrics()
+    fts_on_trgm_sample = _empty_metrics()
+    nostem_metrics = _empty_metrics()
+    # Auto-generated queries are mined from the corpus they search (circular),
+    # so metrics are also reported per source; "gold" is the honest headline.
+    fts_by_source: dict[str, dict[int, dict[str, list[float]]]] = {}
+    nostem_by_source: dict[str, dict[int, dict[str, list[float]]]] = {}
 
     trgm_by_threshold: dict[float, dict[int, dict[str, list[float]]]] = {}
     for t in trgm_thresholds:
@@ -213,11 +247,22 @@ def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
 
     for idx, qt, relevant in indexed:
         fts_results = fts_all.get(idx, [])
+        nostem_results = nostem_all.get(idx, [])
+        src = source_of.get(idx, "unknown")
+        if src not in fts_by_source:
+            fts_by_source[src] = _empty_metrics()
+            nostem_by_source[src] = _empty_metrics()
         for k_val in ks:
-            fts_metrics[k_val]["precision"].append(precision_at_k(fts_results, relevant, k_val))
-            fts_metrics[k_val]["recall"].append(recall_at_k(fts_results, relevant, k_val))
-            fts_metrics[k_val]["mrr"].append(mrr(fts_results[:k_val], relevant))
-            fts_metrics[k_val]["ndcg"].append(ndcg_at_k(fts_results, relevant, k_val))
+            for store, results in (
+                (fts_metrics, fts_results),
+                (fts_by_source[src], fts_results),
+                (nostem_metrics, nostem_results),
+                (nostem_by_source[src], nostem_results),
+            ):
+                store[k_val]["precision"].append(precision_at_k(results, relevant, k_val))
+                store[k_val]["recall"].append(recall_at_k(results, relevant, k_val))
+                store[k_val]["mrr"].append(mrr(results[:k_val], relevant))
+                store[k_val]["ndcg"].append(ndcg_at_k(results, relevant, k_val))
 
         if idx not in trgm_idx_set:
             continue
@@ -251,6 +296,15 @@ def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
 
     fts_summary = _summarize(fts_metrics)
     fts_sample_summary = _summarize(fts_on_trgm_sample)
+    nostem_summary = _summarize(nostem_metrics)
+    by_source_summary = {
+        src: {
+            "metrics": _summarize(m),
+            "nostem_metrics": _summarize(nostem_by_source[src]),
+            "num_queries": len(m[ks[0]]["recall"]),
+        }
+        for src, m in sorted(fts_by_source.items())
+    }
 
     best_f1 = -1.0
     best_trgm_threshold = trgm_thresholds[0]
@@ -271,6 +325,8 @@ def evaluate(queries: list[dict], ks: list[int], trgm_thresholds: list[float],
 
     return {
         "fts": fts_summary,
+        "nostem": nostem_summary,
+        "fts_by_source": by_source_summary,
         "fts_on_sample": fts_sample_summary,
         "trgm": trgm_summary,
         "trgm_threshold": best_trgm_threshold,
@@ -296,11 +352,36 @@ def print_report(result: dict):
     print(f"=== All {n_fts} queries (FTS only) ===")
     print(header)
     print("-" * len(header))
-    row = f"{'pg_kazsearch (FTS)':28}"
-    for k_val in ks:
-        m = result["fts"][k_val]
-        row += f"  {m['precision']:>8.4f}  {m['recall']:>8.4f}  {m['mrr']:>8.4f}  {m['ndcg']:>8.4f}"
-    print(row)
+    for label, key in [("pg_kazsearch (FTS)", "fts"), ("simple (no stemming)", "nostem")]:
+        if key not in result:
+            continue
+        row = f"{label:28}"
+        for k_val in ks:
+            m = result[key][k_val]
+            row += f"  {m['precision']:>8.4f}  {m['recall']:>8.4f}  {m['mrr']:>8.4f}  {m['ndcg']:>8.4f}"
+        print(row)
+
+    by_source = result.get("fts_by_source", {})
+    if by_source:
+        print()
+        print("=== FTS metrics by query source ===")
+        print("NOTE: auto-generated sources (title_keywords, body_sentence, morpho_variant)")
+        print("are mined from the indexed corpus itself and overstate real-world quality.")
+        print("The 'gold' row (human-written queries) is the honest headline number.")
+        print(header)
+        print("-" * len(header))
+        for src, data in by_source.items():
+            row = f"{src + ' (n=' + str(data['num_queries']) + ')':28}"
+            for k_val in ks:
+                m = data["metrics"][k_val]
+                row += f"  {m['precision']:>8.4f}  {m['recall']:>8.4f}  {m['mrr']:>8.4f}  {m['ndcg']:>8.4f}"
+            print(row)
+            if "nostem_metrics" in data:
+                row = f"{'  └ no-stem baseline':28}"
+                for k_val in ks:
+                    m = data["nostem_metrics"][k_val]
+                    row += f"  {m['precision']:>8.4f}  {m['recall']:>8.4f}  {m['mrr']:>8.4f}  {m['ndcg']:>8.4f}"
+                print(row)
 
     print()
     print(f"=== Head-to-head on {n_trgm}-query sample ===")
@@ -336,6 +417,8 @@ def main():
     parser.add_argument("--max-queries", type=int, default=0, help="Limit queries (0=all)")
     parser.add_argument("--trgm-sample", type=int, default=500,
                         help="Run trigram on a random sample of N queries (0=all)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="RNG seed for trigram query sampling (reproducibility)")
     parser.add_argument("--container", default=CONTAINER)
     parser.add_argument("--db", default=DB)
     parser.add_argument("--user", default=USER)
@@ -355,13 +438,22 @@ def main():
 
     result = evaluate(queries, args.k, args.trgm_thresholds,
                       args.container, args.db, args.user,
-                      trgm_sample=args.trgm_sample)
+                      trgm_sample=args.trgm_sample, seed=args.seed)
     print_report(result)
 
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     serializable = {
         "fts": {str(k): v for k, v in result["fts"].items()},
+        "nostem": {str(k): v for k, v in result.get("nostem", {}).items()},
+        "fts_by_source": {
+            src: {
+                "metrics": {str(k): v for k, v in data["metrics"].items()},
+                "nostem_metrics": {str(k): v for k, v in data.get("nostem_metrics", {}).items()},
+                "num_queries": data["num_queries"],
+            }
+            for src, data in result.get("fts_by_source", {}).items()
+        },
         "fts_on_sample": {str(k): v for k, v in result["fts_on_sample"].items()},
         "trgm": {str(k): v for k, v in result["trgm"].items()},
         "trgm_threshold": result["trgm_threshold"],

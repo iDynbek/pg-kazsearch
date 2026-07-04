@@ -158,6 +158,16 @@ fn no_strip_candidate(len: usize) -> explore::Candidate {
 
 fn stem_canonical(txt: &str, cfg: &StemConfig) -> StemOutcome {
     let len = txt.len();
+
+    // Adversarially long tokens: skip exploration entirely, mirroring the
+    // lexicon loader's MAX_STEM_BYTES bound.
+    if len >= MAX_STEM_BYTES {
+        return StemOutcome {
+            stem: txt.to_string(),
+            best: no_strip_candidate(len),
+        };
+    }
+
     let prefix = fill_prefix_tables(&txt);
 
     if prefix.syll[len] < 2 {
@@ -309,8 +319,10 @@ fn should_keep_input(
     }
     let len = txt.len();
     let shallow_ambiguous = candidate.steps == 1 && prefix.syll[len] <= 2;
-    let lost_syllables = prefix.syll[len] >= 3
-        && prefix.syll[candidate.len as usize] < prefix.syll[len];
+    // Any syllable loss on a dictionary-known input is suspicious. This
+    // mirrors pick_best_scored: the old `syll >= 3` precondition let
+    // 2-syllable lemmas be overstemmed on the lex-hit path.
+    let lost_syllables = prefix.syll[candidate.len as usize] < prefix.syll[len];
     shallow_ambiguous || lost_syllables
 }
 

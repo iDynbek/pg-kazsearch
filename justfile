@@ -61,6 +61,9 @@ psql:
 build:
     python3 scripts/build_lexicon.py
     just dc-exec cargo pgrx install --release -c /usr/bin/pg_config -p pg_kazsearch
+    # Sync dictionary data files: the running server reads from sharedir, not
+    # the repo, so a rebuilt lexicon must be copied or dev tests use stale data.
+    docker exec {{ container }} bash -c 'cp /app/data/tsearch_data/kaz_stems.dict /app/data/tsearch_data/kaz_stopwords.stop "$(pg_config --sharedir)/tsearch_data/"'
 
 # Build + reload extension (DROP/CREATE)
 reload: build

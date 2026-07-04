@@ -7,6 +7,15 @@ use kazsearch_core::{PenaltyWeights, ScriptMode, StemConfig};
 
 pgrx::pg_module_magic!();
 
+fn is_weight_param(name: &str) -> bool {
+    matches!(
+        name,
+        "w_no_strip" | "w_short_char" | "w_no_syll" | "w_two_char" | "w_three_one"
+            | "w_deriv" | "w_weak" | "w_single_char" | "w_verb_all_weak" | "w_nik_deriv"
+            | "w_final_cons" | "w_nominal_inf" | "w_verbal_inf" | "w_removed" | "w_verb_track"
+    )
+}
+
 fn try_parse_weight(name: &str, value: &str, w: &mut PenaltyWeights) -> Option<()> {
     let v: f64 = value.parse().ok()?;
     match name {
@@ -88,8 +97,14 @@ fn pg_kazsearch_init(dict_options: pgrx::Internal) -> pgrx::Internal {
                         cfg.derivation = pg_sys::defGetBoolean(defel);
                     } else if name == "max_steps" {
                         let val = pg_sys::defGetString(defel);
-                        let val_str = CStr::from_ptr(val).to_str().unwrap_or("8");
-                        cfg.max_steps = val_str.parse::<i32>().unwrap_or(8);
+                        let val_str = CStr::from_ptr(val).to_str().unwrap_or("");
+                        cfg.max_steps = match val_str.parse::<i32>() {
+                            Ok(v) => v,
+                            Err(_) => pgrx::error!(
+                                "invalid max_steps for pg_kazsearch: \"{}\" (expected integer)",
+                                val_str
+                            ),
+                        };
                     } else if name == "lexicon" {
                         let val = pg_sys::defGetString(defel);
                         lexicon_name =
@@ -110,10 +125,17 @@ fn pg_kazsearch_init(dict_options: pgrx::Internal) -> pgrx::Internal {
                     } else {
                         let val = pg_sys::defGetString(defel);
                         let val_str = CStr::from_ptr(val).to_str().unwrap_or("");
-                        if try_parse_weight(name, val_str, &mut cfg.weights).is_none() {
+                        if !is_weight_param(name) {
                             pgrx::error!(
                                 "unrecognized pg_kazsearch parameter: \"{}\"",
                                 name
+                            );
+                        }
+                        if try_parse_weight(name, val_str, &mut cfg.weights).is_none() {
+                            pgrx::error!(
+                                "invalid value for pg_kazsearch parameter \"{}\": \"{}\" (expected number)",
+                                name,
+                                val_str
                             );
                         }
                     }
@@ -227,6 +249,15 @@ ALTER TEXT SEARCH CONFIGURATION kazakh_cfg
     ALTER MAPPING FOR asciiword, asciihword, hword_asciipart,
                       word, hword, hword_part
     WITH pg_kazsearch_stop, pg_kazsearch_dict, simple;
+
+-- Numbers, URLs, emails, etc. are not Kazakh words but must still be
+-- searchable (dates, percentages, versions in news text). Without these
+-- mappings such tokens are dropped from the tsvector entirely.
+ALTER TEXT SEARCH CONFIGURATION kazakh_cfg
+    ADD MAPPING FOR numword, numhword, hword_numpart,
+                    int, uint, float, sfloat, version,
+                    email, url, url_path, host, file
+    WITH simple;
 "#,
     name = "kazakh_cfg_setup",
     requires = [pg_kazsearch_init, pg_kazsearch_lexize]

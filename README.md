@@ -220,19 +220,46 @@ CLI uses the same core default (`auto`) and exposes `--cyrillic-only` on `stem`,
 
 ## Benchmarks
 
-Tested on 2,999 Kazakh news articles from [kaz.tengrinews.kz](https://kaz.tengrinews.kz/) with 9,048 evaluation queries.
+Tested on 2,999 Kazakh news articles from [kaz.tengrinews.kz](https://kaz.tengrinews.kz/). Queries fall into two groups that must be read differently:
+
+- **gold** (n=51): human-written search queries with manually judged relevance — the honest measure of real-world quality
+- **auto** (n=8,997): queries mined from the indexed articles themselves (title keywords, body sentences, artificially inflected variants) — useful for regression testing, but *circular*: they overstate absolute quality because each query is derived from the document it must find
+
+All numbers below are reproduced by `just eval-search` and written to `eval/results/report.json` (charts are generated from that file, never hardcoded).
+
+### Does stemming help? (vs identical FTS with no stemming)
+
+Recall@10, same corpus, same ranking, only the dictionary differs:
+
+| Query set                  | pg_kazsearch | `simple` (no stem) | Effect |
+| -------------------------- | ------------ | ------------------ | ------ |
+| gold (human, n=51)         | **0.199**    | 0.102              | ~2x recall |
+| morpho_variant (inflected) | **0.442**    | 0.005              | ~94x — stemming is essential for suffixed queries |
+| title_keywords (verbatim)  | 0.986        | 0.992              | no stemming needed for exact-word matches |
+
+Human queries in Kazakh naturally contain inflected forms, which is exactly where the stemmer pays off. Absolute gold-set scores are low partly because gold queries expect up to 10 relevant documents and the corpus is small.
 
 ### PostgreSQL: pg_kazsearch vs pg_trgm
 
-Retrieval QualityRelative ImprovementQuery Latency
+Head-to-head on the same 500-query sample (seeded, reproducible):
 
+| Metric    | pg_kazsearch | pg_trgm | Improvement |
+| --------- | ------------ | ------- | ----------- |
+| Recall@10 | **0.772**    | 0.632   | +22%        |
+| MRR@10    | **0.703**    | 0.544   | +29%        |
+| nDCG@10   | **0.718**    | 0.565   | +27%        |
 
-| Metric        | pg_kazsearch | pg_trgm | Improvement |
-| ------------- | ------------ | ------- | ----------- |
-| Recall@10     | **0.784**    | 0.635   | +23%        |
-| MRR@10        | **0.712**    | 0.566   | +26%        |
-| nDCG@10       | **0.729**    | 0.582   | +25%        |
-| Query latency | **0.5 ms**   | 1.4 ms  | 2.8x faster |
+Note: pg_trgm here matches against titles only (its typical usage); the sample is dominated by auto-queries, so treat this as a relative comparison, not an absolute quality claim.
+
+### Token coverage
+
+Measured over 45,708 corpus tokens with `python3 eval/measure_stem_coverage.py`:
+
+| Rate | Value | Meaning |
+| ---- | ----- | ------- |
+| Analyzed | 74.5% | a suffix was stripped |
+| Stem in lexicon | 66.3% | final stem is a dictionary lemma |
+| Recognized | **86.4%** | stemmed or already a dictionary lemma |
 
 
 ### Elasticsearch: kazsearch_stem vs standard analyzer

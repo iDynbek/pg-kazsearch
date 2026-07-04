@@ -215,3 +215,45 @@ fn test_noun_locative() {
 fn test_comparative() {
     assert_eq!(stem_default("алмарақ"), "алма");
 }
+
+#[test]
+fn test_overlong_input_returned_unchanged() {
+    // >= MAX_STEM_BYTES: exploration is skipped, input returned (lowercased)
+    let long_word = "алма".repeat(40);
+    assert!(long_word.len() >= kazsearch_core::MAX_STEM_BYTES);
+    assert_eq!(stem_default(&long_word), long_word);
+}
+
+#[test]
+fn test_max_steps_out_of_range_is_clamped() {
+    let mut cfg = StemConfig::default();
+    cfg.max_steps = 1_000_000; // would collide in the u16-packed visit key
+    assert_eq!(stem("мектептеріміздегі", &cfg), "мектеп");
+
+    cfg.max_steps = -5;
+    // clamped to 1: still allowed a single strip
+    assert_eq!(stem("алмалар", &cfg), "алма");
+}
+
+#[test]
+fn test_two_syllable_lexicon_word_not_overstemmed() {
+    use kazsearch_core::lexicon::Lexicon;
+
+    // Both the derived lemma and a shorter word are in the dictionary.
+    // The lex-hit path used to allow syllable loss for inputs with < 3
+    // syllables, mis-stemming dictionary lemmas like балтық -> бала.
+    let mut lex = Lexicon::new();
+    for w in ["дос", "достық", "бала", "балтық", "екі", "егін"] {
+        lex.insert(w.to_string());
+    }
+    let cfg = StemConfig {
+        lexicon: Some(lex),
+        ..Default::default()
+    };
+
+    assert_eq!(stem("достық", &cfg), "достық");
+    assert_eq!(stem("балтық", &cfg), "балтық");
+    assert_eq!(stem("егін", &cfg), "егін");
+    // Inflected forms of dictionary words must still stem normally.
+    assert_eq!(stem("балалар", &cfg), "бала");
+}

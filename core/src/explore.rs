@@ -403,6 +403,9 @@ pub fn explore_track_best(
     let nlayer = layers.len() as i32;
     let verb_track = !noun_track;
     let original_chars = prefix.chars[len];
+    // visit_key packs steps into u16 and the C reference caps exploration
+    // depth at 16; clamp here so any StemConfig consumer gets sane pruning.
+    let max_steps = cfg.max_steps.clamp(1, 16);
 
     let mut queue: VecDeque<ExploreState> = VecDeque::with_capacity(1024);
     let mut visit: HashSet<u64> = HashSet::with_capacity(4096);
@@ -433,7 +436,18 @@ pub fn explore_track_best(
 
     while let Some(st) = queue.pop_front() {
         if queue.len() > QUEUE_MAX {
-            break;
+            // Fail closed: a truncated BFS could report a wrong stem as
+            // "best". Returning the input unchanged (understemming) is safe;
+            // the C version raised a fatal error here, which would abort the
+            // whole query inside PostgreSQL.
+            return ExploreResult {
+                best_scored: Candidate {
+                    len: len as i32,
+                    penalty_flags: penalty_flags_at(word, len),
+                    ..Default::default()
+                },
+                best_lexhit: None,
+            };
         }
 
         let cur_pen = candidate_penalty(
@@ -460,7 +474,7 @@ pub fn explore_track_best(
             }
         }
 
-        if st.state_idx >= nlayer || st.c.steps >= cfg.max_steps {
+        if st.state_idx >= nlayer || st.c.steps >= max_steps {
             continue;
         }
 
