@@ -59,8 +59,15 @@ jobs:
           sudo cp pg_ext/sql/pg_kazsearch--*--*.sql "$sharedir/extension/"
       - name: CREATE EXTENSION + smoke assertions
         run: |
-          sudo systemctl start postgresql@${{ matrix.pg }}-main || sudo pg_ctlcluster ${{ matrix.pg }} main start
-          sudo -u postgres psql -v ON_ERROR_STOP=1 <<'SQL'
+          # The runner image ships a PostgreSQL 16 cluster, so pgdg packages
+          # for other majors don't auto-create one, and a fresh cluster gets a
+          # non-default port — create it explicitly and connect by port.
+          sudo pg_createcluster ${{ matrix.pg }} main 2>/dev/null || true
+          sudo pg_ctlcluster ${{ matrix.pg }} main start 2>/dev/null || true
+          pg_lsclusters
+          port=$(pg_lsclusters -h | awk -v v="${{ matrix.pg }}" '$1 == v && $2 == "main" {print $3}')
+          echo "Using cluster ${{ matrix.pg }}/main on port $port"
+          sudo -u postgres psql -p "$port" -v ON_ERROR_STOP=1 <<'SQL'
           CREATE EXTENSION pg_kazsearch;
           -- stemming works through the dictionary
           DO $$
