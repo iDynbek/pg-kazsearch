@@ -227,9 +227,10 @@ CLI uses the same core default (`auto`) and exposes `--cyrillic-only` on `stem`,
 
 ## Benchmarks
 
-Tested on 2,999 Kazakh news articles from [kaz.tengrinews.kz](https://kaz.tengrinews.kz/). Queries fall into two groups that must be read differently:
+Tested on 2,999 Kazakh news articles from [kaz.tengrinews.kz](https://kaz.tengrinews.kz/). Queries fall into three groups that must be read differently:
 
-- **gold** (n=51): human-written search queries with manually judged relevance — the honest measure of real-world quality
+- **gold_v2** (n=132): human-written queries across 39 themes with deliberate morphological variety, URL-keyed, relevance judged over a pooled top-15 union of three retrieval systems, with a blind 20% re-judgment (95.9% agreement, Cohen's κ 0.899) and adjudicated disagreements — the primary quality benchmark (`eval/gold_queries_v2.jsonl`, methodology in `eval/gold_queries_v2.meta.json`)
+- **gold** (n=51): the older, smaller human-written set, kept for continuity
 - **auto** (n=8,997): queries mined from the indexed articles themselves (title keywords, body sentences, artificially inflected variants) — useful for regression testing, but *circular*: they overstate absolute quality because each query is derived from the document it must find
 
 All numbers below are reproduced by `just eval-search` and written to `eval/results/report.json` (charts are generated from that file, never hardcoded).
@@ -240,11 +241,12 @@ Recall@10, same corpus, same ranking, only the dictionary differs:
 
 | Query set                  | pg_kazsearch | `simple` (no stem) | Effect |
 | -------------------------- | ------------ | ------------------ | ------ |
-| gold (human, n=51)         | **0.199**    | 0.102              | ~2x recall |
-| morpho_variant (inflected) | **0.442**    | 0.005              | ~94x — stemming is essential for suffixed queries |
+| gold_v2 (human, n=132)     | **0.496**    | 0.187              | ~2.7x recall (95% CI [0.44, 0.56]) |
+| gold (human, n=51)         | **0.202**    | 0.102              | ~2x recall |
+| morpho_variant (inflected) | **0.444**    | 0.005              | ~94x — stemming is essential for suffixed queries |
 | title_keywords (verbatim)  | 0.986        | 0.992              | no stemming needed for exact-word matches |
 
-Human queries in Kazakh naturally contain inflected forms, which is exactly where the stemmer pays off. Absolute gold-set scores are low partly because gold queries expect up to 10 relevant documents and the corpus is small.
+Human queries in Kazakh naturally contain inflected forms, which is exactly where the stemmer pays off. gold_v2 MRR@10 is 0.697 vs 0.420 without stemming.
 
 ### PostgreSQL: pg_kazsearch vs pg_trgm
 
@@ -252,9 +254,9 @@ Head-to-head on the same 500-query sample (seeded, reproducible):
 
 | Metric    | pg_kazsearch | pg_trgm | Improvement |
 | --------- | ------------ | ------- | ----------- |
-| Recall@10 | **0.772**    | 0.632   | +22%        |
-| MRR@10    | **0.703**    | 0.544   | +29%        |
-| nDCG@10   | **0.718**    | 0.565   | +27%        |
+| Recall@10 | **0.768**    | 0.619   | +24%        |
+| MRR@10    | **0.705**    | 0.539   | +31%        |
+| nDCG@10   | **0.717**    | 0.555   | +29%        |
 
 Note: pg_trgm here matches against titles only (its typical usage); the sample is dominated by auto-queries, so treat this as a relative comparison, not an absolute quality claim.
 
@@ -264,9 +266,9 @@ Measured over 45,708 corpus tokens with `python3 eval/measure_stem_coverage.py`:
 
 | Rate | Value | Meaning |
 | ---- | ----- | ------- |
-| Analyzed | 74.5% | a suffix was stripped |
-| Stem in lexicon | 66.3% | final stem is a dictionary lemma |
-| Recognized | **86.4%** | stemmed or already a dictionary lemma |
+| Analyzed | 74.8% | a suffix was stripped |
+| Stem in lexicon | 67.3% | final stem is a dictionary lemma |
+| Recognized | **86.7%** | stemmed or already a dictionary lemma |
 
 
 ### Elasticsearch: kazsearch_stem vs standard analyzer
