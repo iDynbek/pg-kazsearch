@@ -38,22 +38,38 @@ pub fn count_syllables(s: &str) -> i32 {
         .count() as i32
 }
 
+/// Table size: stem() never explores words of `MAX_STEM_BYTES` (128) bytes
+/// or longer, so fixed stack arrays avoid four heap allocations per word.
+const TABLE_LEN: usize = crate::MAX_STEM_BYTES + 1;
+
 /// Prefix sums indexed by UTF-8 byte offset `b`: `chars[b]` / `syll[b]` count
-/// Unicode scalars and vowel-based syllables in `s[0..b)`.
+/// Unicode scalars and vowel-based syllables in `s[0..b)`. `harm_back[b]` and
+/// `tail_back[b]` precompute [`word_is_back`] / `tail_is_back` for `s[0..b)`
+/// so harmony checks during BFS are O(1) instead of prefix rescans.
 #[derive(Clone, Debug)]
 pub struct PrefixTables {
-    pub chars: Vec<i32>,
-    pub syll: Vec<i32>,
+    pub chars: [i32; TABLE_LEN],
+    pub syll: [i32; TABLE_LEN],
+    harm_back: [bool; TABLE_LEN],
+    tail_back: [bool; TABLE_LEN],
 }
 
-/// Build prefix tables for [`PrefixTables`].
+/// Build prefix tables for [`PrefixTables`]. `s` must be shorter than
+/// [`crate::MAX_STEM_BYTES`] (the caller guards this).
 pub fn fill_prefix_tables(s: &str) -> PrefixTables {
     let len = s.len();
-    let mut chars = vec![0i32; len + 1];
-    let mut syll = vec![0i32; len + 1];
+    assert!(len < TABLE_LEN, "fill_prefix_tables: input too long");
+    let mut chars = [0i32; TABLE_LEN];
+    let mut syll = [0i32; TABLE_LEN];
+    let mut harm_back = [true; TABLE_LEN];
+    let mut tail_back = [true; TABLE_LEN];
 
     let mut nchars: i32 = 0;
     let mut nsyll: i32 = 0;
+
+    // Incremental state mirroring word_is_back / tail_is_back.
+    let mut wb_back = true; // word_is_back: class of last harmony-bearing vowel
+    let mut last_two = ['\0', '\0']; // tail_is_back: last two non-glide vowels
 
     for (i, cp) in s.char_indices() {
         let char_len = cp.len_utf8();
@@ -61,15 +77,64 @@ pub fn fill_prefix_tables(s: &str) -> PrefixTables {
         if is_vowel(cp) || is_loan_vowel(cp) {
             nsyll += 1;
         }
+
+        if !is_glide(cp) {
+            if is_back_vowel(cp) || cp == 'я' {
+                wb_back = true;
+            } else if is_front_vowel(cp) || cp == 'э' {
+                wb_back = false;
+            }
+            if is_back_vowel(cp) || is_front_vowel(cp) || is_loan_vowel(cp) {
+                last_two[0] = last_two[1];
+                last_two[1] = cp;
+            }
+        }
+
+        let tb = if last_two[1] == '\0' {
+            true
+        } else if is_loan_vowel(last_two[1]) {
+            if last_two[0] != '\0' { is_back_vowel(last_two[0]) } else { true }
+        } else {
+            is_back_vowel(last_two[1])
+        };
+
         let end = i + char_len;
         for b in (i + 1)..=end.min(len) {
             chars[b] = nchars;
             syll[b] = nsyll;
+            harm_back[b] = wb_back;
+            tail_back[b] = tb;
         }
     }
 
-    PrefixTables { chars, syll }
+    PrefixTables { chars, syll, harm_back, tail_back }
 }
+
+impl PrefixTables {
+    /// O(1) equivalent of `harmony_ok(&s[..b], harmony)`.
+    pub fn harmony_ok_at(&self, b: usize, harmony: u8) -> bool {
+        if harmony == HARM_ANY_CLASS {
+            return true;
+        }
+        if b == 0 {
+            return false;
+        }
+        let full_back = self.harm_back[b];
+        if harmony == 1 && full_back {
+            return true;
+        }
+        if harmony == 2 && !full_back {
+            return true;
+        }
+        if self.syll[b] >= 4 {
+            let tb = self.tail_back[b];
+            return if harmony == 1 { tb } else { !tb };
+        }
+        false
+    }
+}
+
+const HARM_ANY_CLASS: u8 = 0;
 
 pub fn word_is_back(s: &str) -> bool {
     let mut found = false;

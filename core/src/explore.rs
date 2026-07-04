@@ -314,6 +314,66 @@ fn concat_on_stack<'a>(a: &str, b: &str, buf: &'a mut [u8; MAX_STEM_BYTES]) -> O
     Some(std::str::from_utf8(&buf[..total]).unwrap())
 }
 
+/// Stack-buffer version of [`apply_mutation`]: writes the (possibly) mutated
+/// copy of `s` into `buf`. All mutation pairs (б→п, ғ→қ, г→к) are 2-byte
+/// Cyrillic ↔ 2-byte Cyrillic, so the length never changes.
+fn mutated_on_stack<'a>(s: &str, buf: &'a mut [u8; MAX_STEM_BYTES]) -> Option<&'a str> {
+    if s.len() >= MAX_STEM_BYTES {
+        return None;
+    }
+    buf[..s.len()].copy_from_slice(s.as_bytes());
+
+    let replacement: Option<&str> = if s.len() < 2 {
+        None
+    } else if s.ends_with('б') {
+        Some("п")
+    } else if s.ends_with('ғ') {
+        Some("қ")
+    } else if s.ends_with('г') {
+        let base = &s[..s.len() - 'г'.len_utf8()];
+        match utf8_last_cp(base) {
+            Some('о' | 'ө' | 'ұ' | 'ү' | 'у') => None,
+            _ => Some("к"),
+        }
+    } else {
+        None
+    };
+
+    if let Some(rep) = replacement {
+        let start = s.len() - rep.len();
+        buf[start..s.len()].copy_from_slice(rep.as_bytes());
+    }
+    Some(std::str::from_utf8(&buf[..s.len()]).unwrap())
+}
+
+/// Stack-buffer version of [`try_elision_restore`]: writes the restored form
+/// into `buf` if restoration applies.
+fn elision_restored_on_stack<'a>(s: &str, buf: &'a mut [u8; MAX_STEM_BYTES]) -> Option<&'a str> {
+    let mut it = s.chars().rev();
+    let last_cp = it.next()?;
+    if last_cp != 'н' && last_cp != 'з' {
+        return None;
+    }
+    let prev_cp = it.next()?;
+
+    if (is_vowel(prev_cp) || is_loan_vowel(prev_cp)) && !(s.ends_with("уз") || s.ends_with("із")) {
+        return None;
+    }
+
+    let lv = s.chars().filter(|&c| is_vowel(c)).last()?;
+    let ins = if is_back_vowel(lv) { "ы" } else { "і" };
+
+    let total = s.len() + ins.len();
+    if total >= MAX_STEM_BYTES {
+        return None;
+    }
+    let split = s.len() - last_cp.len_utf8();
+    buf[..split].copy_from_slice(s[..split].as_bytes());
+    buf[split..split + ins.len()].copy_from_slice(ins.as_bytes());
+    buf[split + ins.len()..total].copy_from_slice(s[split..].as_bytes());
+    Some(std::str::from_utf8(&buf[..total]).unwrap())
+}
+
 fn try_append_vowel_check(stem: &str, suffix: &str, lexicon: &Lexicon) -> bool {
     if stem.is_empty() {
         return false;
@@ -338,26 +398,28 @@ pub fn candidate_hits_lexicon(c: &Candidate, word: &str, lexicon: &Lexicon) -> b
     if c.steps > 0 && c.nominal_inf > 0 {
         if let Some(last_sfx) = c.last_suffix {
             if POSS_VOWEL_SUFFIXES.contains(&last_sfx) {
-                let mut alt = stem.to_string();
-                apply_mutation(&mut alt);
-                if lexicon.contains(&alt) {
-                    return true;
-                }
-                if let Some(restored) = try_elision_restore(&alt) {
-                    if lexicon.contains(&restored) {
+                let mut buf_a = [0u8; MAX_STEM_BYTES];
+                let mut buf_b = [0u8; MAX_STEM_BYTES];
+
+                if let Some(alt) = mutated_on_stack(stem, &mut buf_a) {
+                    if lexicon.contains(alt) {
                         return true;
+                    }
+                    if let Some(restored) = elision_restored_on_stack(alt, &mut buf_b) {
+                        if lexicon.contains(restored) {
+                            return true;
+                        }
                     }
                 }
 
-                let alt2 = stem.to_string();
-                if let Some(restored) = try_elision_restore(&alt2) {
-                    if lexicon.contains(&restored) {
+                if let Some(restored) = elision_restored_on_stack(stem, &mut buf_a) {
+                    if lexicon.contains(restored) {
                         return true;
                     }
-                    let mut restored_mut = restored;
-                    apply_mutation(&mut restored_mut);
-                    if lexicon.contains(&restored_mut) {
-                        return true;
+                    if let Some(restored_mut) = mutated_on_stack(restored, &mut buf_b) {
+                        if lexicon.contains(restored_mut) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -386,13 +448,14 @@ pub fn candidate_hits_lexicon(c: &Candidate, word: &str, lexicon: &Lexicon) -> b
         return true;
     }
 
-    let mut alt = stem.to_string();
-    apply_mutation(&mut alt);
-    if try_append_vowel_check(&alt, v1, lexicon) {
-        return true;
-    }
-    if try_append_vowel_check(&alt, v2, lexicon) {
-        return true;
+    let mut buf = [0u8; MAX_STEM_BYTES];
+    if let Some(alt) = mutated_on_stack(stem, &mut buf) {
+        if try_append_vowel_check(alt, v1, lexicon) {
+            return true;
+        }
+        if try_append_vowel_check(alt, v2, lexicon) {
+            return true;
+        }
     }
 
     false
@@ -519,7 +582,7 @@ pub fn explore_track_best(
             if prefix.syll[base_len] < 1 {
                 continue;
             }
-            if !harmony_ok(&word[..base_len], rule.harmony) {
+            if !prefix.harmony_ok_at(base_len, rule.harmony) {
                 continue;
             }
             if !layer_guard(layer.layer_id, rule.suffix, &word[..base_len], st.c.steps) {
