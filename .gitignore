@@ -28,6 +28,7 @@ pg_kazsearch-*.zip
 
 # Rust build artifacts
 target/
+target-linux/
 
 # Elasticsearch plugin build artifacts
 elastic/java/build/

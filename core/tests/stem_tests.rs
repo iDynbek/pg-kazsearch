@@ -292,6 +292,71 @@ fn test_loan_vowel_harmony() {
 }
 
 #[test]
+fn test_verbal_noun_conflation() {
+    use kazsearch_core::lexicon::Lexicon;
+
+    // gold_v2 zero-recall class: query-side verbal nouns (-у/-ю, often +poss)
+    // and document-side finite verbs must meet at the same root.
+    let mut lex = Lexicon::new();
+    for w in [
+        "өзгер", "өзгеру", "көбей", "көбею", "ұстал", "ұсталу",
+        "тарат", "арзан", "арзанда", "қымбат", "қымбатта",
+        // single-syllable roots that must NOT swallow homographs
+        "ат", "ату", "аю", "ай", "оқ", "оқу",
+    ] {
+        lex.insert(w.to_string());
+    }
+    let cfg = StemConfig {
+        lexicon: Some(lex),
+        ..Default::default()
+    };
+
+    // -у/-ю nominalized infinitives collapse onto the lexicon verb root...
+    assert_eq!(stem("өзгеру", &cfg), "өзгер");
+    assert_eq!(stem("өзгеруі", &cfg), "өзгер");
+    assert_eq!(stem("өзгерді", &cfg), "өзгер");
+    assert_eq!(stem("көбею", &cfg), "көбей");
+    assert_eq!(stem("көбеюі", &cfg), "көбей");
+    assert_eq!(stem("көбейді", &cfg), "көбей");
+    assert_eq!(stem("ұсталуы", &cfg), "ұстал");
+    assert_eq!(stem("ұсталды", &cfg), "ұстал");
+    // ...denominal -да/-та verbs collapse onto the nominal root...
+    assert_eq!(stem("арзандады", &cfg), "арзан");
+    assert_eq!(stem("арзандауы", &cfg), "арзан");
+    assert_eq!(stem("қымбаттады", &cfg), "қымбат");
+    assert_eq!(stem("қымбаттауы", &cfg), "қымбат");
+    // ...but single-syllable bases stay put: ату is not the horse ат,
+    // аю (bear) is not ай (moon), оқу (study) is not оқ (bullet).
+    assert_eq!(stem("ату", &cfg), "ату");
+    assert_eq!(stem("аю", &cfg), "аю");
+    assert_eq!(stem("оқу", &cfg), "оқу");
+}
+
+#[test]
+fn test_participle_plural_idempotent() {
+    use kazsearch_core::lexicon::Lexicon;
+
+    let mut lex = Lexicon::new();
+    for w in ["тарат", "тарату"] {
+        lex.insert(w.to_string());
+    }
+    let cfg = StemConfig {
+        lexicon: Some(lex),
+        ..Default::default()
+    };
+
+    // stem() used to be non-idempotent: таратқандар stopped at таратқан
+    // while таратқан itself went to тарат. The fixed-point pass makes the
+    // substantivized participle meet the bare participle and the root.
+    assert_eq!(stem("таратқан", &cfg), "тарат");
+    assert_eq!(stem("таратқандар", &cfg), "тарат");
+    assert_eq!(stem("тарату", &cfg), "тарат");
+
+    let once = stem("таратқандар", &cfg);
+    assert_eq!(stem(&once, &cfg), once, "stem must be idempotent");
+}
+
+#[test]
 fn test_hyphenated_tokens_stem_last_run() {
     use kazsearch_core::lexicon::Lexicon;
 

@@ -135,12 +135,55 @@ fn test_parity_5k_words_with_lexicon() {
         }
     }
 
+    // The C reference is a single-pass stemmer. The Rust fixed-point pass
+    // (idempotent stemming + lexicon-root reduction of verbal nouns and
+    // denominal verbs) intentionally reduces ~12% of this corpus further
+    // than C does; those divergences are covered by
+    // test_stem_idempotent_over_5k_corpus and the gold_v2 eval instead.
     assert!(
-        parity_pct >= 95.0,
+        parity_pct >= 85.0,
         "5K parity too low: {:.2}% ({}/{} words match)",
         parity_pct,
         matches,
         total
+    );
+}
+
+/// Search-critical invariant: a stemmed form must stem to itself, otherwise
+/// two inflections of one lexeme can land on different index terms
+/// (stem(таратқандар) was таратқан while stem(таратқан) was тарат).
+#[test]
+fn test_stem_idempotent_over_5k_corpus() {
+    let cfg = load_test_config();
+    let data = fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/c_stem_output_5k.txt"
+    ))
+    .expect("c_stem_output_5k.txt not found");
+
+    let mut violations: Vec<(String, String, String)> = Vec::new();
+    for line in data.lines() {
+        let word = match line.trim().split('|').next() {
+            Some(w) if !w.is_empty() => w,
+            _ => continue,
+        };
+        let once = stem(word, &cfg);
+        let twice = stem(&once, &cfg);
+        if twice != once {
+            violations.push((word.to_string(), once, twice));
+        }
+    }
+
+    if !violations.is_empty() {
+        eprintln!("\nIdempotency violations ({}):", violations.len());
+        for (w, a, b) in violations.iter().take(30) {
+            eprintln!("{:<30} stem={:<20} restem={}", w, a, b);
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "{} words are not idempotent under stem()",
+        violations.len()
     );
 }
 

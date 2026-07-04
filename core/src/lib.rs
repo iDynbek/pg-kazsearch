@@ -131,13 +131,13 @@ pub fn stem(word: &str, cfg: &StemConfig) -> String {
 
     if cfg.script_mode == ScriptMode::CyrillicOnly {
         return match analyzed.class {
-            ScriptClass::Cyrillic => stem_canonical(&analyzed.lowered, cfg).stem,
+            ScriptClass::Cyrillic => stem_cyrillic(&analyzed.lowered, cfg).stem,
             _ => stem_separated_cyrillic(&analyzed.lowered, cfg).unwrap_or(analyzed.lowered),
         };
     }
 
     match analyzed.class {
-        ScriptClass::Cyrillic => stem_canonical(&analyzed.lowered, cfg).stem,
+        ScriptClass::Cyrillic => stem_cyrillic(&analyzed.lowered, cfg).stem,
         ScriptClass::Latin => {
             let latin = match analyzed.latin.as_ref() {
                 Some(v) => v,
@@ -149,6 +149,97 @@ pub fn stem(word: &str, cfg: &StemConfig) -> String {
             stem_separated_cyrillic(&analyzed.lowered, cfg).unwrap_or(analyzed.lowered)
         }
     }
+}
+
+/// Collapse a stem onto the lexicon root it was derived from, so query and
+/// document inflections of one lexeme meet at the same stem:
+///
+/// * `-у/-ю` verbal nouns: `өзгеру`→`өзгер`, `көбею`→`көбей`. The nominalized
+///   infinitive is itself a dictionary entry, so the safety valve keeps it and
+///   `өзгеруі`→`өзгеру` never met `өзгерді`→`өзгер`.
+/// * denominal verbs `-да/-де/-та/-те/-ла/-ле`: `арзанда`→`арзан`, so
+///   `арзандады` meets `арзандауы` (which the noun track derives to `арзан`).
+///
+/// The base must be a lexicon entry with >= 2 syllables: single-syllable roots
+/// collide with unrelated homographs (`ату`→`ат` "horse", `аю`→`ай` "moon").
+/// Glides (у/ю) are excluded from the syllable count — `сауда` "trade" must
+/// not reduce to `сау` "healthy" just because `у` counts as a back vowel.
+fn strong_syllables(s: &str) -> i32 {
+    s.chars()
+        .filter(|&c| (is_vowel(c) || text::is_loan_vowel(c)) && c != 'у' && c != 'ю')
+        .count() as i32
+}
+
+fn reduce_to_lexicon_root(stem: &str, lex: &Lexicon) -> Option<String> {
+    if let Some(base) = stem.strip_suffix('у') {
+        if strong_syllables(base) >= 2 && lex.contains(base) {
+            return Some(base.to_string());
+        }
+        return None;
+    }
+    if let Some(base) = stem.strip_suffix('ю') {
+        if strong_syllables(base) >= 2 {
+            let root = format!("{base}й");
+            if lex.contains(&root) {
+                return Some(root);
+            }
+        }
+        return None;
+    }
+    for sfx in ["да", "де", "та", "те", "ла", "ле"] {
+        if let Some(base) = stem.strip_suffix(sfx) {
+            if strong_syllables(base) >= 2 && lex.contains(base) {
+                return Some(base.to_string());
+            }
+            return None;
+        }
+    }
+    None
+}
+
+/// Fixed-point driver for Cyrillic stemming. A single BFS pass is not
+/// idempotent: `stem(таратқандар)` = `таратқан` while `stem(таратқан)` =
+/// `тарат`, so the plural form and the bare participle never met in the
+/// index. Re-running the winner through selection (plus
+/// [`reduce_to_lexicon_root`]) until it stabilizes makes `stem(stem(w)) ==
+/// stem(w)` hold by construction. Only enabled with a lexicon: the lexicon
+/// safety valve is what keeps repeated passes from compounding overstemming.
+fn stem_cyrillic(txt: &str, cfg: &StemConfig) -> StemOutcome {
+    let first = stem_canonical(txt, cfg);
+    let lex = match cfg.lexicon {
+        Some(ref l) => l,
+        None => return first,
+    };
+
+    let mut cur = match reduce_to_lexicon_root(&first.stem, lex) {
+        Some(r) => r,
+        None => first.stem.clone(),
+    };
+
+    let mut seen: Vec<String> = Vec::with_capacity(4);
+    for _ in 0..4 {
+        if cur.is_empty() {
+            break;
+        }
+        let mut next = stem_canonical(&cur, cfg).stem;
+        if let Some(r) = reduce_to_lexicon_root(&next, lex) {
+            next = r;
+        }
+        if next == cur {
+            break;
+        }
+        if seen.contains(&next) {
+            // Oscillation (stem <-> repaired form). Pick a deterministic
+            // representative so both cycle members map to the same stem.
+            if (next.len(), next.as_str()) < (cur.len(), cur.as_str()) {
+                cur = next;
+            }
+            break;
+        }
+        seen.push(std::mem::replace(&mut cur, next));
+    }
+
+    StemOutcome { stem: cur, best: first.best }
 }
 
 /// Hyphenated/apostrophe Cyrillic tokens (жекпе-жекте, көші-қонның) are
@@ -180,7 +271,7 @@ fn stem_separated_cyrillic(lowered: &str, cfg: &StemConfig) -> Option<String> {
     }
     let (start, end) = last_run?;
 
-    let stemmed = stem_canonical(&lowered[start..end], cfg).stem;
+    let stemmed = stem_cyrillic(&lowered[start..end], cfg).stem;
     let mut out = String::with_capacity(start + stemmed.len() + (lowered.len() - end));
     out.push_str(&lowered[..start]);
     out.push_str(&stemmed);
@@ -298,7 +389,9 @@ fn stem_latin(latin: &LatinAnalysis, cfg: &StemConfig) -> Option<String> {
     let mut best_choice: Option<((i32, i32, i32, i32, i32, i32), String)> = None;
 
     for candidate in &latin.candidates {
-        let outcome = stem_canonical(candidate, cfg);
+        // Same fixed-point path as native Cyrillic input: transliterated
+        // queries must land on the same stems the index was built with.
+        let outcome = stem_cyrillic(candidate, cfg);
         let stem_chars = utf8_char_count(&outcome.stem);
         let stem_syll = count_syllables(&outcome.stem);
 

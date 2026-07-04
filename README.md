@@ -241,12 +241,12 @@ Recall@10, same corpus, same ranking, only the dictionary differs:
 
 | Query set                  | pg_kazsearch | `simple` (no stem) | Effect |
 | -------------------------- | ------------ | ------------------ | ------ |
-| gold_v2 (human, n=132)     | **0.496**    | 0.187              | ~2.7x recall (95% CI [0.44, 0.56]) |
-| gold (human, n=51)         | **0.202**    | 0.102              | ~2x recall |
-| morpho_variant (inflected) | **0.444**    | 0.005              | ~94x — stemming is essential for suffixed queries |
-| title_keywords (verbatim)  | 0.986        | 0.992              | no stemming needed for exact-word matches |
+| gold_v2 (human, n=132)     | **0.524**    | 0.187              | ~2.8x recall (95% CI [0.47, 0.58]) |
+| gold (human, n=51)         | **0.215**    | 0.102              | ~2x recall |
+| morpho_variant (inflected) | **0.870**    | 0.005              | stemming is essential for suffixed queries |
+| title_keywords (verbatim)  | 0.985        | 0.992              | no stemming needed for exact-word matches |
 
-Human queries in Kazakh naturally contain inflected forms, which is exactly where the stemmer pays off. gold_v2 MRR@10 is 0.697 vs 0.420 without stemming.
+Human queries in Kazakh naturally contain inflected forms, which is exactly where the stemmer pays off. gold_v2 MRR@10 is 0.724 vs 0.420 without stemming. Stemming is idempotent (`stem(stem(w)) == stem(w)`, enforced by tests), so query-side and document-side inflections of one lexeme always meet at the same index term.
 
 ### PostgreSQL: pg_kazsearch vs pg_trgm
 
@@ -254,9 +254,9 @@ Head-to-head on the same 500-query sample (seeded, reproducible):
 
 | Metric    | pg_kazsearch | pg_trgm | Improvement |
 | --------- | ------------ | ------- | ----------- |
-| Recall@10 | **0.768**    | 0.619   | +24%        |
-| MRR@10    | **0.705**    | 0.539   | +31%        |
-| nDCG@10   | **0.717**    | 0.555   | +29%        |
+| Recall@10 | **0.920**    | 0.619   | +49%        |
+| MRR@10    | **0.846**    | 0.539   | +57%        |
+| nDCG@10   | **0.861**    | 0.555   | +55%        |
 
 Note: pg_trgm here matches against titles only (its typical usage); the sample is dominated by auto-queries, so treat this as a relative comparison, not an absolute quality claim.
 
@@ -266,9 +266,9 @@ Measured over 45,708 corpus tokens with `python3 eval/measure_stem_coverage.py`:
 
 | Rate | Value | Meaning |
 | ---- | ----- | ------- |
-| Analyzed | 74.8% | a suffix was stripped |
-| Stem in lexicon | 67.3% | final stem is a dictionary lemma |
-| Recognized | **86.7%** | stemmed or already a dictionary lemma |
+| Analyzed | 75.6% | a suffix was stripped |
+| Stem in lexicon | 73.9% | final stem is a dictionary lemma |
+| Recognized | **86.8%** | stemmed or already a dictionary lemma |
 
 
 ### Elasticsearch: kazsearch_stem vs standard analyzer
@@ -278,10 +278,10 @@ On human-written queries, the stemmer finds more relevant articles and ranks the
 
 | Query set                          | Metric    | kazsearch_stem | standard | Improvement |
 | ---------------------------------- | --------- | -------------- | -------- | ----------- |
-| gold (human, n=51)                 | Recall@10 | **0.390**      | 0.309    | +26%        |
-|                                    | MRR@10    | **0.676**      | 0.591    | +14%        |
-| gold_v2 (human, URL-keyed, n=132)  | Recall@10 | **0.533**      | 0.451    | +18%        |
-|                                    | MRR@10    | **0.644**      | 0.569    | +13%        |
+| gold (human, n=51)                 | Recall@10 | **0.391**      | 0.309    | +27%        |
+|                                    | MRR@10    | **0.667**      | 0.591    | +13%        |
+| gold_v2 (human, URL-keyed, n=132)  | Recall@10 | **0.518**      | 0.451    | +15%        |
+|                                    | MRR@10    | **0.663**      | 0.569    | +17%        |
 
 
 ### vs Tengrinews.kz native search
